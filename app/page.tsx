@@ -149,7 +149,21 @@ function RichTextEditor({
   )
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({
+  post,
+  isOwner,
+  menuOpen,
+  onMenuToggle,
+  onEditClick,
+  onDeleteClick,
+}: {
+  post: Post
+  isOwner?: boolean
+  menuOpen?: boolean
+  onMenuToggle?: () => void
+  onEditClick?: () => void
+  onDeleteClick?: () => void
+}) {
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const quoteAuthor = typeof post.metadata?.author === 'string' ? post.metadata.author : ''
   const storedLinkPreview = getLinkPreviewFromMetadata(post.metadata)
@@ -182,7 +196,53 @@ function PostCard({ post }: { post: Post }) {
 
   return (
     <article className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-      <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
+      <div className="relative mb-3 flex items-start justify-between gap-2">
+        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
+        {isOwner ? (
+          <div className="relative shrink-0" data-post-menu-root>
+            <button
+              type="button"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label="Post options"
+              onClick={(e) => {
+                e.stopPropagation()
+                onMenuToggle?.()
+              }}
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <circle cx="12" cy="6" r="1.75" />
+                <circle cx="12" cy="12" r="1.75" />
+                <circle cx="12" cy="18" r="1.75" />
+              </svg>
+            </button>
+            {menuOpen ? (
+              <div
+                className="absolute right-0 top-full z-10 mt-0.5 min-w-[148px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                  onClick={() => onEditClick?.()}
+                >
+                  Edit post
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                  onClick={() => onDeleteClick?.()}
+                >
+                  Delete post
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       {post.type === 'youtube' && post.content ? (
         getYouTubeVideoId(post.content) ? (
@@ -311,6 +371,9 @@ export default function Home() {
   const [editingContent, setEditingContent] = useState('')
   const [editingCaption, setEditingCaption] = useState('')
   const [editingLoading, setEditingLoading] = useState(false)
+  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
+  const [deleteConfirmPost, setDeleteConfirmPost] = useState<Post | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const editContentEditorRef = useRef<HTMLDivElement | null>(null)
@@ -468,6 +531,34 @@ export default function Home() {
     return () => document.removeEventListener('selectionchange', handleSelectionChange)
   }, [activeEditor])
 
+  useEffect(() => {
+    if (!postMenuOpenId) return
+    const close = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && !el.closest('[data-post-menu-root]')) setPostMenuOpenId(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [postMenuOpenId])
+
+  useEffect(() => {
+    if (!postMenuOpenId) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPostMenuOpenId(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [postMenuOpenId])
+
+  useEffect(() => {
+    if (!deleteConfirmPost) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !deleteLoading) setDeleteConfirmPost(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [deleteConfirmPost, deleteLoading])
+
   async function createPost() {
     if (!user || !panel || !canPost) return
     setLoading(true)
@@ -608,12 +699,74 @@ export default function Home() {
     setEditingLoading(false)
   }
 
+  async function confirmDeletePost() {
+    if (!deleteConfirmPost || !user?.id) return
+    setDeleteLoading(true)
+    const { data, error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', deleteConfirmPost.id)
+      .eq('user_id', user.id)
+      .select('id')
+    if (error) {
+      alert(`Could not delete post: ${error.message}`)
+    } else if (!data?.length) {
+      alert(
+        'Could not delete this post. Add a DELETE policy in Supabase (see supabase/policies-posts-delete.sql) if you have not already.',
+      )
+    } else {
+      if (editingPostId === deleteConfirmPost.id) cancelEditing()
+      setDeleteConfirmPost(null)
+      await fetchPosts()
+    }
+    setDeleteLoading(false)
+  }
+
   const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
   const activeTypeButton = (type: ComposerType) => panel === type
   const textCount = stripHtml(textContent).length
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
+      {deleteConfirmPost ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => !deleteLoading && setDeleteConfirmPost(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-post-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-post-title" className="text-lg font-medium text-zinc-900">
+              Delete this post?
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">This cannot be undone.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={() => setDeleteConfirmPost(null)}
+                className="rounded-full px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={() => void confirmDeletePost()}
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mx-auto max-w-2xl px-4 py-10">
         <header className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-light tracking-tight text-zinc-900">Things I Like</h1>
@@ -802,53 +955,60 @@ export default function Home() {
           {posts.length === 0 ? <p className="py-12 text-center text-zinc-400">No posts yet. Share something you like.</p> : null}
           {posts.map((post) => (
             <div key={post.id}>
-              <PostCard post={post} />
-              {user?.id === post.user_id ? (
-                <div className="mb-6 mt-2 flex justify-end">
-                  {editingPostId === post.id ? (
-                    <div className="w-full rounded-md border border-zinc-200 bg-white p-4">
-                      <div className="mb-3">
-                        <div className="mb-2 flex gap-1">
-                          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('bold')} className={`h-7 w-7 rounded-[3px] text-xs hover:bg-zinc-100 hover:text-zinc-900 ${formatState.bold ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}><strong>B</strong></button>
-                          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('italic')} className={`h-7 w-7 rounded-[3px] text-xs italic hover:bg-zinc-100 hover:text-zinc-900 ${formatState.italic ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}>I</button>
-                          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('createLink')} className="h-7 w-10 rounded-[3px] text-xs text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900">Link</button>
-                        </div>
-                        {editingPostType === 'text' || editingPostType === 'quote' ? (
-                          <RichTextEditor
-                            value={editingContent}
-                            onChange={setEditingContent}
-                            onFocus={() => {
-                              setActiveEditor('editContent')
-                              updateToolbarState('editContent')
-                            }}
-                            placeholder="Edit post content..."
-                            className="mb-3 min-h-[90px] w-full rounded-md border border-zinc-200 p-2 text-sm text-zinc-800 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
-                            editorRef={editContentEditorRef}
-                            maxPlainTextLength={500}
-                          />
-                        ) : (
-                          <input value={editingContent} onChange={(e) => setEditingContent(e.target.value)} className="mb-3 w-full rounded-md border border-zinc-200 p-2 text-sm focus:outline-none" />
-                        )}
-                        <RichTextEditor
-                          value={editingCaption}
-                          onChange={setEditingCaption}
-                          onFocus={() => {
-                            setActiveEditor('editCaption')
-                            updateToolbarState('editCaption')
-                          }}
-                          placeholder="Edit caption..."
-                          className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
-                          editorRef={editCaptionEditorRef}
-                        />
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <button onClick={cancelEditing} className="text-sm text-zinc-500 hover:text-zinc-900">Cancel</button>
-                        <button onClick={() => saveEdit(post)} disabled={editingLoading} className="rounded-full bg-zinc-900 px-4 py-1 text-sm text-white disabled:opacity-50">{editingLoading ? 'Saving...' : 'Save'}</button>
-                      </div>
+              <PostCard
+                post={post}
+                isOwner={user?.id === post.user_id}
+                menuOpen={postMenuOpenId === post.id}
+                onMenuToggle={() => setPostMenuOpenId((cur) => (cur === post.id ? null : post.id))}
+                onEditClick={() => {
+                  startEditing(post)
+                  setPostMenuOpenId(null)
+                }}
+                onDeleteClick={() => {
+                  setDeleteConfirmPost(post)
+                  setPostMenuOpenId(null)
+                }}
+              />
+              {user?.id === post.user_id && editingPostId === post.id ? (
+                <div className="mb-6 mt-2 w-full rounded-md border border-zinc-200 bg-white p-4">
+                  <div className="mb-3">
+                    <div className="mb-2 flex gap-1">
+                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('bold')} className={`h-7 w-7 rounded-[3px] text-xs hover:bg-zinc-100 hover:text-zinc-900 ${formatState.bold ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}><strong>B</strong></button>
+                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('italic')} className={`h-7 w-7 rounded-[3px] text-xs italic hover:bg-zinc-100 hover:text-zinc-900 ${formatState.italic ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}>I</button>
+                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('createLink')} className="h-7 w-10 rounded-[3px] text-xs text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900">Link</button>
                     </div>
-                  ) : (
-                    <button onClick={() => startEditing(post)} className="text-xs text-zinc-500 hover:text-zinc-900">Edit post</button>
-                  )}
+                    {editingPostType === 'text' || editingPostType === 'quote' ? (
+                      <RichTextEditor
+                        value={editingContent}
+                        onChange={setEditingContent}
+                        onFocus={() => {
+                          setActiveEditor('editContent')
+                          updateToolbarState('editContent')
+                        }}
+                        placeholder="Edit post content..."
+                        className="mb-3 min-h-[90px] w-full rounded-md border border-zinc-200 p-2 text-sm text-zinc-800 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
+                        editorRef={editContentEditorRef}
+                        maxPlainTextLength={500}
+                      />
+                    ) : (
+                      <input value={editingContent} onChange={(e) => setEditingContent(e.target.value)} className="mb-3 w-full rounded-md border border-zinc-200 p-2 text-sm focus:outline-none" />
+                    )}
+                    <RichTextEditor
+                      value={editingCaption}
+                      onChange={setEditingCaption}
+                      onFocus={() => {
+                        setActiveEditor('editCaption')
+                        updateToolbarState('editCaption')
+                      }}
+                      placeholder="Edit caption..."
+                      className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
+                      editorRef={editCaptionEditorRef}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={cancelEditing} className="text-sm text-zinc-500 hover:text-zinc-900">Cancel</button>
+                    <button type="button" onClick={() => void saveEdit(post)} disabled={editingLoading} className="rounded-full bg-zinc-900 px-4 py-1 text-sm text-white disabled:opacity-50">{editingLoading ? 'Saving...' : 'Save'}</button>
+                  </div>
                 </div>
               ) : null}
             </div>

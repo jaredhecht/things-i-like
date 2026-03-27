@@ -235,12 +235,12 @@ function PostCard({ post }: { post: Post }) {
           href={post.content}
           target="_blank"
           rel="noopener noreferrer"
-          className="mb-4 block overflow-hidden rounded-md bg-zinc-100"
+          className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-zinc-100 p-1"
         >
           <img
             src={post.content}
             alt="Post image"
-            className="mx-auto max-h-[min(60vh,520px)] w-full object-contain"
+            className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
           />
         </a>
       ) : null}

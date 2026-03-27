@@ -291,13 +291,3 @@ export default function Home() {
     </main>
   )
 }
-```
-
-Save all files (**Cmd + S**). Check **localhost:3000** — you should see a "Sign in with Google" button instead of the composer. The composer only appears after you sign in and claim a username.
-
-To push this live, go to your second terminal tab and run:
-```
-cd ~/Projects/things-i-like
-git add .
-git commit -m "add google auth and username claiming"
-git push

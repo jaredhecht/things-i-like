@@ -17,6 +17,8 @@ export function PostCard({
   isOwner,
   authorUsername,
   authorDisplayName,
+  authorAvatarUrl,
+  authorPreferDisplayName,
   showAuthor,
   dashboardActions,
   likeCount = 0,
@@ -31,8 +33,11 @@ export function PostCard({
   post: Post
   isOwner?: boolean
   authorUsername?: string | null
-  /** Shown as the primary label; falls back to @username. */
+  /** Used when authorPreferDisplayName is true; ignored for public preview. */
   authorDisplayName?: string | null
+  authorAvatarUrl?: string | null
+  /** Signed-in dashboard: show display name (else @username). Signed-out: always @username. */
+  authorPreferDisplayName?: boolean
   showAuthor?: boolean
   dashboardActions?: boolean
   likeCount?: number
@@ -94,12 +99,28 @@ export function PostCard({
             {showAuthor && authorUsername ? (
               <>
                 <span className="text-zinc-300">·</span>
-                <Link
-                  href={`/${authorUsername}`}
-                  className="text-sm font-medium text-zinc-800 hover:underline"
-                >
-                  {authorDisplayName?.trim() || `@${authorUsername}`}
-                </Link>
+                <span className="inline-flex max-w-full items-center gap-2">
+                  {authorAvatarUrl ? (
+                    <img
+                      src={authorAvatarUrl}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 bg-zinc-100"
+                      aria-hidden
+                    />
+                  )}
+                  <Link
+                    href={`/${authorUsername}`}
+                    className="min-w-0 truncate text-sm font-medium text-zinc-800 hover:underline"
+                  >
+                    {authorPreferDisplayName && authorDisplayName?.trim()
+                      ? authorDisplayName.trim()
+                      : `@${authorUsername}`}
+                  </Link>
+                </span>
               </>
             ) : null}
           </div>

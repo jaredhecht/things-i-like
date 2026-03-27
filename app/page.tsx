@@ -22,11 +22,13 @@ type Profile = {
   id: string
   username: string
   display_name: string | null
+  avatar_url?: string | null
 }
 
 type AuthorMeta = {
   username: string
   display_name: string | null
+  avatar_url?: string | null
 }
 
 type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
@@ -200,6 +202,12 @@ export default function Home() {
     [user?.id],
   )
 
+  async function syncAvatarToProfile(u: User) {
+    const avatarUrl = u.user_metadata?.avatar_url
+    if (!u.id || typeof avatarUrl !== 'string' || !avatarUrl.trim()) return
+    await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', u.id)
+  }
+
   async function loadProfile(userId: string) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
     if (data) {
@@ -214,10 +222,12 @@ export default function Home() {
     e.preventDefault()
     if (!user || !username.trim()) return
     setLoading(true)
+    const avatarFromOAuth = user.user_metadata?.avatar_url
     const { error } = await supabase.from('profiles').insert({
       id: user.id,
       username: username.trim().toLowerCase(),
       display_name: user.user_metadata?.full_name || username.trim(),
+      avatar_url: typeof avatarFromOAuth === 'string' ? avatarFromOAuth : null,
     })
     if (error) alert(error.code === '23505' ? 'That username is already taken. Try another one.' : `Error claiming username: ${error.message}`)
     else await loadProfile(user.id)
@@ -278,10 +288,14 @@ export default function Home() {
       setAuthorByUserId({})
       return
     }
-    const { data: profs } = await supabase.from('profiles').select('id, username, display_name').in('id', ids)
+    const { data: profs } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', ids)
     const map: Record<string, AuthorMeta> = {}
     for (const p of profs || []) {
-      map[p.id] = { username: p.username, display_name: p.display_name }
+      map[p.id] = {
+        username: p.username,
+        display_name: p.display_name,
+        avatar_url: p.avatar_url ?? null,
+      }
     }
     setPosts(list)
     setAuthorByUserId(map)
@@ -299,10 +313,14 @@ export default function Home() {
       } catch (error) {
         console.error('Error fetching feed:', error)
       }
-      const { data: profs } = await supabase.from('profiles').select('id, username, display_name').in('id', authorIds)
+      const { data: profs } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', authorIds)
       const map: Record<string, AuthorMeta> = {}
       for (const p of profs || []) {
-        map[p.id] = { username: p.username, display_name: p.display_name }
+        map[p.id] = {
+          username: p.username,
+          display_name: p.display_name,
+          avatar_url: p.avatar_url ?? null,
+        }
       }
       setAuthorByUserId(map)
       setPosts(list)
@@ -373,9 +391,9 @@ export default function Home() {
   }
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      if (user) loadProfile(user.id)
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      setUser(u)
+      if (u) void loadProfile(u.id)
     })
 
     const {
@@ -383,7 +401,7 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null
       setUser(currentUser)
-      if (currentUser) loadProfile(currentUser.id)
+      if (currentUser) void loadProfile(currentUser.id)
       if (!currentUser) {
         setProfile(null)
         setNeedsUsername(false)
@@ -400,8 +418,12 @@ export default function Home() {
       void loadPublicPreviewPosts()
       return
     }
-    void fetchFeedForUser(user.id)
-  }, [user?.id, fetchFeedForUser, loadPublicPreviewPosts])
+    const sessionUser = user
+    void (async () => {
+      await syncAvatarToProfile(sessionUser)
+      await fetchFeedForUser(sessionUser.id)
+    })()
+  }, [user, fetchFeedForUser, loadPublicPreviewPosts])
 
   function resetComposer() {
     setTextContent('')
@@ -709,7 +731,8 @@ export default function Home() {
     setDeleteLoading(false)
   }
 
-  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined
+  const avatarUrl =
+    (profile?.avatar_url as string | undefined) || (user?.user_metadata?.avatar_url as string | undefined)
   const activeTypeButton = (type: ComposerType) => panel === type
   const textCount = stripHtml(textContent).length
 
@@ -1130,6 +1153,8 @@ export default function Home() {
                 isOwner={user?.id === post.user_id}
                 authorUsername={author?.username ?? null}
                 authorDisplayName={author?.display_name ?? null}
+                authorAvatarUrl={author?.avatar_url ?? null}
+                authorPreferDisplayName={!!user}
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}

@@ -15,6 +15,7 @@ import {
   type LinkPreview,
   type Post,
 } from '../src/lib/post-helpers'
+import { fetchAllPostsForAuthorIds } from '../src/lib/posts-batched'
 import { supabase } from '../src/lib/supabase'
 
 type Profile = {
@@ -238,12 +239,16 @@ export default function Home() {
       return
     }
     const ids = list.map((p) => p.id)
-    const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', ids)
     const countByPost: Record<string, number> = {}
     const my = new Set<string>()
-    for (const row of likesRows || []) {
-      countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
-      if (row.user_id === userId) my.add(row.post_id)
+    const chunk = 500
+    for (let i = 0; i < ids.length; i += chunk) {
+      const slice = ids.slice(i, i + chunk)
+      const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', slice)
+      for (const row of likesRows || []) {
+        countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
+        if (row.user_id === userId) my.add(row.post_id)
+      }
     }
     setLikeCounts(countByPost)
     setLikedPostIds(my)
@@ -255,13 +260,12 @@ export default function Home() {
       if (followErr) console.error('Error fetching follows:', followErr)
       const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
       const authorIds = [...new Set([userId, ...followingIds])]
-      const { data: rows, error } = await supabase
-        .from('posts')
-        .select('*')
-        .in('user_id', authorIds)
-        .order('created_at', { ascending: false })
-      if (error) console.error('Error fetching feed:', error)
-      const list = rows || []
+      let list: Post[] = []
+      try {
+        list = await fetchAllPostsForAuthorIds(supabase, authorIds)
+      } catch (error) {
+        console.error('Error fetching feed:', error)
+      }
       const { data: profs } = await supabase.from('profiles').select('id, username').in('id', authorIds)
       const map: Record<string, string> = {}
       for (const p of profs || []) map[p.id] = p.username

@@ -2,8 +2,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { FollowButton } from '@/src/components/FollowButton'
 import { PostCard } from '@/src/components/PostCard'
+import { fetchAllPostsForUserId } from '@/src/lib/posts-batched'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import type { Post } from '@/src/lib/post-helpers'
+
+export const dynamic = 'force-dynamic'
 
 const RESERVED = new Set(['auth', 'api'])
 
@@ -28,13 +31,13 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     notFound()
   }
 
-  const { data: posts } = await supabase
-    .from('posts')
-    .select('*')
-    .eq('user_id', profile.id)
-    .order('created_at', { ascending: false })
-
-  const list = (posts || []) as Post[]
+  let list: Post[] = []
+  try {
+    list = await fetchAllPostsForUserId(supabase, profile.id)
+  } catch (e) {
+    console.error('[username] posts query failed:', slug, e)
+    throw e
+  }
 
   return (
     <main className="min-h-screen bg-[#fafafa]">

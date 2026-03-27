@@ -61,6 +61,29 @@ function HeartIcon({ filled, className }: { filled: boolean; className?: string 
   )
 }
 
+function BookmarkIcon({ filled, className }: { filled: boolean; className?: string }) {
+  if (filled) {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M6 4.5A2.5 2.5 0 0 1 8.5 2h7A2.5 2.5 0 0 1 18 4.5v15.75l-6-3.375-6 3.375V4.5Z" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 4.5A2.5 2.5 0 0 1 8.5 2h7A2.5 2.5 0 0 1 18 4.5v15.75l-6-3.375-6 3.375V4.5Z" />
+    </svg>
+  )
+}
+
 /** Retweet / reblog style (two opposing arrows). */
 function RethingIcon({ className }: { className?: string }) {
   return (
@@ -89,10 +112,14 @@ export function PostCard({
   authorAvatarUrl,
   showAuthor,
   dashboardActions,
+  /** Saved-posts list: show bookmark (and likes/rethings when not your post). */
+  bookmarksFeed,
   profileLikeBar,
   likeCount = 0,
   liked,
   onLike,
+  bookmarked,
+  onBookmark,
   onRething,
   menuOpen,
   onMenuToggle,
@@ -105,11 +132,14 @@ export function PostCard({
   authorAvatarUrl?: string | null
   showAuthor?: boolean
   dashboardActions?: boolean
-  /** Public profile: show like counts; like button only when count > 0 (see PostCard footer). */
+  bookmarksFeed?: boolean
+  /** Public profile: positive counts show heart and a numeric count only; zero likes show nothing. */
   profileLikeBar?: boolean
   likeCount?: number
   liked?: boolean
   onLike?: () => void
+  bookmarked?: boolean
+  onBookmark?: () => void
   onRething?: () => void
   menuOpen?: boolean
   onMenuToggle?: () => void
@@ -200,8 +230,14 @@ export function PostCard({
     return () => controller.abort()
   }, [liveLinkPreview?.title, post.content, post.type])
 
-  const showEngagement = dashboardActions && !isOwner && (onLike || onRething)
-  const showFooterDivider = showEngagement || profileLikeBar
+  const showEngagement =
+    dashboardActions &&
+    (bookmarksFeed
+      ? Boolean(onBookmark || (!isOwner && (onLike || onRething)))
+      : !isOwner && Boolean(onLike || onRething || onBookmark))
+  const showProfileLikeRow = profileLikeBar && likeCount > 0
+  const showProfileActions = profileLikeBar && (showProfileLikeRow || !!onBookmark)
+  const showFooterDivider = showEngagement || showProfileActions
   const originalHandle = post.rething_from_username?.trim()
   /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
   const showAuthorHandle = Boolean(
@@ -458,6 +494,21 @@ export function PostCard({
                 ) : null}
               </div>
             ) : null}
+            {onBookmark ? (
+              <button
+                type="button"
+                onClick={onBookmark}
+                aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark'}
+                aria-pressed={bookmarked}
+                className={`rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  bookmarked
+                    ? 'text-amber-600 hover:bg-amber-50'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
+                }`}
+              >
+                <BookmarkIcon filled={!!bookmarked} className="h-5 w-5" />
+              </button>
+            ) : null}
             {onRething ? (
               <button
                 type="button"
@@ -469,24 +520,47 @@ export function PostCard({
               </button>
             ) : null}
           </div>
-        ) : profileLikeBar ? (
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            <span className="text-xs tabular-nums text-zinc-500">
-              {likeCount === 1 ? '1 like' : `${likeCount} likes`}
-            </span>
-            {likeCount > 0 && onLike ? (
+        ) : showProfileActions ? (
+          <div className="flex shrink-0 items-center justify-end gap-1">
+            {showProfileLikeRow ? (
+              onLike ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onLike}
+                    aria-label={liked ? 'Unlike' : 'Like'}
+                    aria-pressed={liked}
+                    className={`rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                      liked
+                        ? 'text-red-500 hover:bg-red-50'
+                        : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
+                    }`}
+                  >
+                    <HeartIcon filled={!!liked} className="h-5 w-5" />
+                  </button>
+                  <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500" aria-label={`${likeCount} likes`}>
+                    {likeCount}
+                  </span>
+                </>
+              ) : (
+                <span className="pr-1 text-xs tabular-nums text-zinc-500" aria-label={`${likeCount} likes`}>
+                  {likeCount}
+                </span>
+              )
+            ) : null}
+            {onBookmark ? (
               <button
                 type="button"
-                onClick={onLike}
-                aria-label={liked ? 'Unlike' : 'Like'}
-                aria-pressed={liked}
+                onClick={onBookmark}
+                aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark'}
+                aria-pressed={bookmarked}
                 className={`rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                  liked
-                    ? 'text-red-500 hover:bg-red-50'
+                  bookmarked
+                    ? 'text-amber-600 hover:bg-amber-50'
                     : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
                 }`}
               >
-                <HeartIcon filled={!!liked} className="h-5 w-5" />
+                <BookmarkIcon filled={!!bookmarked} className="h-5 w-5" />
               </button>
             ) : null}
           </div>

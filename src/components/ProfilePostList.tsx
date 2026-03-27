@@ -15,20 +15,26 @@ export function ProfilePostList({
   const [userId, setUserId] = useState<string | null>(null)
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() => ({ ...initialLikeCounts }))
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
 
-  const hydrateMyLikes = useCallback(async (uid: string, ids: string[]) => {
+  const hydrateMyEngagement = useCallback(async (uid: string, ids: string[]) => {
     if (ids.length === 0) {
       setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
       return
     }
     const my = new Set<string>()
+    const marks = new Set<string>()
     const chunk = 500
     for (let i = 0; i < ids.length; i += chunk) {
       const slice = ids.slice(i, i + chunk)
-      const { data } = await supabase.from('post_likes').select('post_id').eq('user_id', uid).in('post_id', slice)
-      for (const row of data || []) my.add(row.post_id as string)
+      const { data: likeRows } = await supabase.from('post_likes').select('post_id').eq('user_id', uid).in('post_id', slice)
+      for (const row of likeRows || []) my.add(row.post_id as string)
+      const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', uid).in('post_id', slice)
+      for (const row of bmRows || []) marks.add(row.post_id as string)
     }
     setLikedPostIds(my)
+    setBookmarkedPostIds(marks)
   }, [])
 
   /** Browser RPC (anon) — reliable if RSC/PostgREST batching missed counts on the server. */
@@ -72,19 +78,25 @@ export function ProfilePostList({
     void supabase.auth.getUser().then(({ data: { user } }) => {
       const uid = user?.id ?? null
       setUserId(uid)
-      if (uid) void hydrateMyLikes(uid, ids)
-      else setLikedPostIds(new Set())
+      if (uid) void hydrateMyEngagement(uid, ids)
+      else {
+        setLikedPostIds(new Set())
+        setBookmarkedPostIds(new Set())
+      }
     })
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_e, session) => {
       const uid = session?.user?.id ?? null
       setUserId(uid)
-      if (uid) void hydrateMyLikes(uid, ids)
-      else setLikedPostIds(new Set())
+      if (uid) void hydrateMyEngagement(uid, ids)
+      else {
+        setLikedPostIds(new Set())
+        setBookmarkedPostIds(new Set())
+      }
     })
     return () => subscription.unsubscribe()
-  }, [posts, hydrateMyLikes])
+  }, [posts, hydrateMyEngagement])
 
   async function toggleLike(postId: string) {
     if (!userId) return
@@ -112,6 +124,30 @@ export function ProfilePostList({
     }
   }
 
+  async function toggleBookmark(postId: string) {
+    if (!userId) return
+    const marked = bookmarkedPostIds.has(postId)
+    if (marked) {
+      const { error } = await supabase.from('post_bookmarks').delete().eq('user_id', userId).eq('post_id', postId)
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setBookmarkedPostIds((prev) => {
+        const n = new Set(prev)
+        n.delete(postId)
+        return n
+      })
+    } else {
+      const { error } = await supabase.from('post_bookmarks').insert({ user_id: userId, post_id: postId })
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setBookmarkedPostIds((prev) => new Set(prev).add(postId))
+    }
+  }
+
   return (
     <section className="space-y-6">
       {posts.length === 0 ? <p className="py-12 text-center text-zinc-400">No posts yet.</p> : null}
@@ -127,6 +163,8 @@ export function ProfilePostList({
             likeCount={n}
             liked={likedPostIds.has(post.id)}
             onLike={canInteract && n > 0 ? () => void toggleLike(post.id) : undefined}
+            bookmarked={bookmarkedPostIds.has(post.id)}
+            onBookmark={canInteract ? () => void toggleBookmark(post.id) : undefined}
           />
         )
       })}

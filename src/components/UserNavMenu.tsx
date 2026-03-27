@@ -47,15 +47,7 @@ export function UserNavMenu({
   }, [open])
 
   return (
-    <div className="flex items-center gap-1 sm:gap-2">
-      <Link
-        href="/whos-here"
-        className={`shrink-0 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-zinc-100 ${
-          onWhosHere ? 'font-medium text-zinc-900' : 'text-zinc-500 hover:text-zinc-800'
-        }`}
-      >
-        Who&apos;s Here?
-      </Link>
+    <div className="flex items-center gap-0.5">
       <Link
         href="/notifications"
         className={`rounded-full p-2 transition-colors hover:bg-zinc-100 ${
@@ -101,6 +93,26 @@ export function UserNavMenu({
               Your blog <span className="text-zinc-500">@{username}</span>
             </Link>
           ) : null}
+          <Link
+            href="/whos-here"
+            role="menuitem"
+            className={`block px-4 py-2.5 text-sm hover:bg-zinc-50 ${
+              onWhosHere ? 'font-medium text-zinc-900' : 'text-zinc-800'
+            }`}
+            onClick={() => setOpen(false)}
+          >
+            Who&apos;s Here?
+          </Link>
+          <Link
+            href="/bookmarks"
+            role="menuitem"
+            className={`block px-4 py-2.5 text-sm hover:bg-zinc-50 ${
+              pathname === '/bookmarks' ? 'font-medium text-zinc-900' : 'text-zinc-800'
+            }`}
+            onClick={() => setOpen(false)}
+          >
+            Bookmarks
+          </Link>
           <Link
             href="/notifications"
             role="menuitem"

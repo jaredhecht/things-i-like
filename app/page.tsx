@@ -150,6 +150,7 @@ export default function Home() {
   const [authorByUserId, setAuthorByUserId] = useState<Record<string, AuthorMeta>>({})
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
   const [rethingSource, setRethingSource] = useState<Post | null>(null)
   const [rethingCaption, setRethingCaption] = useState('')
   const [rethingBusy, setRethingBusy] = useState(false)
@@ -264,11 +265,13 @@ export default function Home() {
     if (list.length === 0) {
       setLikeCounts({})
       setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
       return
     }
     const ids = list.map((p) => p.id)
     const countByPost: Record<string, number> = {}
     const my = new Set<string>()
+    const bookmarks = new Set<string>()
     const chunk = 500
     for (let i = 0; i < ids.length; i += chunk) {
       const slice = ids.slice(i, i + chunk)
@@ -277,9 +280,12 @@ export default function Home() {
         countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
         if (row.user_id === userId) my.add(row.post_id)
       }
+      const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', userId).in('post_id', slice)
+      for (const row of bmRows || []) bookmarks.add(row.post_id as string)
     }
     setLikeCounts(countByPost)
     setLikedPostIds(my)
+    setBookmarkedPostIds(bookmarks)
   }, [])
 
   const loadPublicPreviewPosts = useCallback(async () => {
@@ -348,6 +354,30 @@ export default function Home() {
     } = await supabase.auth.getUser()
     if (!u) return
     await fetchFeedForUser(u.id)
+  }
+
+  async function toggleBookmark(postId: string) {
+    if (!user?.id) return
+    const marked = bookmarkedPostIds.has(postId)
+    if (marked) {
+      const { error } = await supabase.from('post_bookmarks').delete().eq('user_id', user.id).eq('post_id', postId)
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setBookmarkedPostIds((prev) => {
+        const n = new Set(prev)
+        n.delete(postId)
+        return n
+      })
+    } else {
+      const { error } = await supabase.from('post_bookmarks').insert({ user_id: user.id, post_id: postId })
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setBookmarkedPostIds((prev) => new Set(prev).add(postId))
+    }
   }
 
   async function toggleLike(postId: string) {
@@ -428,6 +458,7 @@ export default function Home() {
     if (!user?.id) {
       setLikeCounts({})
       setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
       void loadPublicPreviewPosts()
       return
     }
@@ -1237,6 +1268,8 @@ export default function Home() {
                 likeCount={likeCounts[post.id] ?? 0}
                 liked={likedPostIds.has(post.id)}
                 onLike={user?.id && post.user_id !== user.id ? () => void toggleLike(post.id) : undefined}
+                bookmarked={bookmarkedPostIds.has(post.id)}
+                onBookmark={user?.id && post.user_id !== user.id ? () => void toggleBookmark(post.id) : undefined}
                 onRething={user?.id && post.user_id !== user.id ? () => setRethingSource(post) : undefined}
                 menuOpen={postMenuOpenId === post.id}
                 onMenuToggle={() => setPostMenuOpenId((cur) => (cur === post.id ? null : post.id))}

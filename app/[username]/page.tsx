@@ -8,7 +8,7 @@ import type { Post } from '@/src/lib/post-helpers'
 
 export const dynamic = 'force-dynamic'
 
-const RESERVED = new Set(['auth', 'api', 'settings', 'whos-here', 'notifications'])
+const RESERVED = new Set(['auth', 'api', 'settings', 'whos-here', 'notifications', 'bookmarks'])
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username: raw } = await params

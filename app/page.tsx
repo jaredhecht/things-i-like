@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
@@ -47,6 +48,7 @@ function RichTextEditor({
   className,
   editorRef,
   maxPlainTextLength,
+  onProfilePathNavigate,
 }: {
   value: string
   onChange: (html: string) => void
@@ -55,6 +57,7 @@ function RichTextEditor({
   className: string
   editorRef: RefObject<HTMLDivElement | null>
   maxPlainTextLength?: number
+  onProfilePathNavigate?: (path: string) => void
 }) {
   useEffect(() => {
     if (!editorRef.current) return
@@ -79,6 +82,11 @@ function RichTextEditor({
             const a = t.closest('a') as HTMLAnchorElement
             const href = a.getAttribute('href')
             if (href) {
+              if (/^\/[a-zA-Z0-9_]+$/.test(href)) {
+                e.preventDefault()
+                onProfilePathNavigate?.(href)
+                return
+              }
               e.preventDefault()
               try {
                 const url = new URL(href, window.location.href)
@@ -103,6 +111,7 @@ function RichTextEditor({
 }
 
 export default function Home() {
+  const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [needsUsername, setNeedsUsername] = useState(false)
@@ -142,6 +151,7 @@ export default function Home() {
   const [rethingSource, setRethingSource] = useState<Post | null>(null)
   const [rethingCaption, setRethingCaption] = useState('')
   const [rethingBusy, setRethingBusy] = useState(false)
+  const [notifUnread, setNotifUnread] = useState(false)
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const editContentEditorRef = useRef<HTMLDivElement | null>(null)
@@ -425,6 +435,48 @@ export default function Home() {
       await fetchFeedForUser(sessionUser.id)
     })()
   }, [user, fetchFeedForUser, loadPublicPreviewPosts])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotifUnread(false)
+      return
+    }
+    const uid = user.id
+    let cancelled = false
+    const refreshUnread = async () => {
+      const {
+        data: { user: current },
+      } = await supabase.auth.getUser()
+      if (!current?.id || cancelled) return
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', current.id)
+        .is('read_at', null)
+      if (error || cancelled) return
+      setNotifUnread((count ?? 0) > 0)
+    }
+    void refreshUnread()
+    const channel = supabase
+      .channel(`notifications:${uid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${uid}` },
+        () => {
+          setNotifUnread(true)
+        },
+      )
+      .subscribe()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void refreshUnread()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVis)
+      void supabase.removeChannel(channel)
+    }
+  }, [user?.id])
 
   function resetComposer() {
     setTextContent('')
@@ -839,7 +891,12 @@ export default function Home() {
         <header className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-light tracking-tight text-zinc-900">Things I Like</h1>
           {user ? (
-            <UserNavMenu username={profile?.username ?? null} avatarUrl={avatarUrl} onSignOut={signOut} />
+            <UserNavMenu
+              username={profile?.username ?? null}
+              avatarUrl={avatarUrl}
+              onSignOut={signOut}
+              hasUnreadNotifications={notifUnread}
+            />
           ) : (
             <div className="flex items-center gap-4">
               <Link href="/whos-here" className="text-sm text-zinc-500 hover:text-zinc-800 hover:underline">
@@ -1039,6 +1096,7 @@ export default function Home() {
                         className="min-h-[110px] w-full text-sm leading-relaxed text-zinc-900 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
                         editorRef={textEditorRef}
                         maxPlainTextLength={500}
+                        onProfilePathNavigate={(p) => router.push(p)}
                       />
                     </>
                   ) : null}
@@ -1117,6 +1175,7 @@ export default function Home() {
                       placeholder={panel === 'link' ? 'Add a note... why does this matter to you?' : 'Add a caption...'}
                       className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
                       editorRef={captionEditorRef}
+                      onProfilePathNavigate={(p) => router.push(p)}
                     />
                   </div>
                 ) : null}
@@ -1191,6 +1250,7 @@ export default function Home() {
                         className="mb-3 min-h-[90px] w-full rounded-md border border-zinc-200 p-2 text-sm text-zinc-800 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
                         editorRef={editContentEditorRef}
                         maxPlainTextLength={500}
+                        onProfilePathNavigate={(p) => router.push(p)}
                       />
                     ) : (
                       <input value={editingContent} onChange={(e) => setEditingContent(e.target.value)} className="mb-3 w-full rounded-md border border-zinc-200 p-2 text-sm focus:outline-none" />
@@ -1205,6 +1265,7 @@ export default function Home() {
                       placeholder="Edit caption..."
                       className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
                       editorRef={editCaptionEditorRef}
+                      onProfilePathNavigate={(p) => router.push(p)}
                     />
                   </div>
                   <div className="flex justify-end gap-2">

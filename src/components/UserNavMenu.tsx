@@ -3,14 +3,24 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
+function LightningIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08-.07-.19C11.23 8.84 13.5 4 13.5 4L18 3l-1 7h3.5c.49 0 .56.23.5.66l-.08.09C18.93 11.71 17.5 15 17.5 15L12 16l-1 5z" />
+    </svg>
+  )
+}
+
 export function UserNavMenu({
   username,
   avatarUrl,
   onSignOut,
+  hasUnreadNotifications,
 }: {
   username: string | null
   avatarUrl?: string | null
   onSignOut: () => void
+  hasUnreadNotifications?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -34,7 +44,17 @@ export function UserNavMenu({
   }, [open])
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="flex items-center gap-0.5">
+      <Link
+        href="/notifications"
+        className={`rounded-full p-2 transition-colors hover:bg-zinc-100 ${
+          hasUnreadNotifications ? 'text-amber-500' : 'text-zinc-400'
+        }`}
+        aria-label={hasUnreadNotifications ? 'Notifications (unread)' : 'Notifications'}
+      >
+        <LightningIcon className="h-5 w-5" />
+      </Link>
+      <div className="relative" ref={rootRef}>
       <button
         type="button"
         aria-expanded={open}
@@ -79,6 +99,14 @@ export function UserNavMenu({
             Who&apos;s Here?
           </Link>
           <Link
+            href="/notifications"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm text-zinc-800 hover:bg-zinc-50"
+            onClick={() => setOpen(false)}
+          >
+            Notifications
+          </Link>
+          <Link
             href="/settings"
             role="menuitem"
             className="block px-4 py-2.5 text-sm text-zinc-800 hover:bg-zinc-50"
@@ -100,6 +128,7 @@ export function UserNavMenu({
           </button>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }

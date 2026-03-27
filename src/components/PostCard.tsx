@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { linkifyAtMentionsInHtml } from '@/src/lib/linkify-mentions'
 import {
   getHostnameLabel,
   getLinkPreviewFromMetadata,
@@ -11,6 +13,25 @@ import {
   type LinkPreview,
   type Post,
 } from '@/src/lib/post-helpers'
+
+function PlainWithMentions({ text }: { text: string }) {
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = /^@([a-zA-Z0-9_]+)$/.exec(part)
+        if (m) {
+          return (
+            <Link key={i} href={`/${m[1]}`} className="text-blue-600 underline">
+              {part}
+            </Link>
+          )
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </>
+  )
+}
 
 function HeartIcon({ filled, className }: { filled: boolean; className?: string }) {
   if (filled) {
@@ -88,7 +109,21 @@ export function PostCard({
   onEditClick?: () => void
   onDeleteClick?: () => void
 }) {
+  const router = useRouter()
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const htmlBody = useMemo(() => linkifyAtMentionsInHtml(post.content || ''), [post.content])
+  const htmlCaption = useMemo(() => linkifyAtMentionsInHtml(post.caption || ''), [post.caption])
+
+  function handleRichTextLinkClick(e: React.MouseEvent<HTMLDivElement>) {
+    const a = (e.target as HTMLElement).closest('a')
+    if (!a) return
+    const href = a.getAttribute('href')
+    if (href && /^\/[a-zA-Z0-9_]+$/.test(href)) {
+      e.preventDefault()
+      router.push(href)
+    }
+  }
+
   const quoteAuthor = typeof post.metadata?.author === 'string' ? post.metadata.author : ''
   const storedLinkPreview = getLinkPreviewFromMetadata(post.metadata)
   const [liveLinkPreview, setLiveLinkPreview] = useState<LinkPreview | null>(storedLinkPreview)
@@ -136,7 +171,7 @@ export function PostCard({
   )
 
   return (
-    <article className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
+    <article id={`post-${post.id}`} className="scroll-mt-24 rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="relative mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 pr-2">
           {originalHandle ? (
@@ -290,19 +325,37 @@ export function PostCard({
 
       {post.type === 'quote' && (
         <>
-          <blockquote className="mb-2 text-xl font-light italic leading-relaxed text-zinc-900">&ldquo;{post.content}&rdquo;</blockquote>
+          <blockquote className="mb-2 text-xl font-light italic leading-relaxed text-zinc-900">
+            &ldquo;
+            <PlainWithMentions text={post.content || ''} />
+            &rdquo;
+          </blockquote>
           {quoteAuthor ? <p className="mb-3 text-sm italic text-zinc-500">- {quoteAuthor}</p> : null}
         </>
       )}
 
-      {post.type === 'text' && post.content ? <div className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: post.content }} /> : null}
+      {post.type === 'text' && post.content ? (
+        <div
+          role="presentation"
+          onClick={handleRichTextLinkClick}
+          className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline"
+          dangerouslySetInnerHTML={{ __html: htmlBody }}
+        />
+      ) : null}
       {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text'].includes(post.type) && post.content ? (
         <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
           {post.content}
         </a>
       ) : null}
 
-      {post.caption ? <div className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: post.caption }} /> : null}
+      {post.caption ? (
+        <div
+          role="presentation"
+          onClick={handleRichTextLinkClick}
+          className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline"
+          dangerouslySetInnerHTML={{ __html: htmlCaption }}
+        />
+      ) : null}
 
       <div
         className={`flex items-center justify-between gap-3 ${showEngagement ? 'mt-3 border-t border-zinc-100 pt-3' : 'mt-1 pt-0.5'}`}

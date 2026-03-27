@@ -5,6 +5,7 @@ import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { User } from '@supabase/supabase-js'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
 import { PostCard } from '../src/components/PostCard'
+import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
   getSpotifyEmbedUrl,
   getYouTubeVideoId,
@@ -838,16 +839,16 @@ export default function Home() {
         <header className="mb-8 flex items-center justify-between">
           <h1 className="text-3xl font-light tracking-tight text-zinc-900">Things I Like</h1>
           {user ? (
-            <div className="flex items-center gap-3">
-              {profile ? (
-                <Link href={`/${profile.username}`} className="text-sm text-zinc-500 hover:text-zinc-800 hover:underline">
-                  @{profile.username}
-                </Link>
-              ) : null}
-              <button onClick={signOut} className="text-sm text-zinc-400 hover:text-zinc-700">Sign out</button>
-            </div>
+            <UserNavMenu username={profile?.username ?? null} avatarUrl={avatarUrl} onSignOut={signOut} />
           ) : (
-            <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">Sign in with Google</button>
+            <div className="flex items-center gap-4">
+              <Link href="/whos-here" className="text-sm text-zinc-500 hover:text-zinc-800 hover:underline">
+                Who&apos;s Here?
+              </Link>
+              <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">
+                Sign in with Google
+              </button>
+            </div>
           )}
         </header>
 

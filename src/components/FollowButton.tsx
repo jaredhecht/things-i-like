@@ -7,9 +7,12 @@ import { supabase } from '@/src/lib/supabase'
 export function FollowButton({
   followingId,
   profileUsername,
+  oauthReturnTo,
 }: {
   followingId: string
   profileUsername: string
+  /** Path after sign-in (e.g. `/whos-here`). Defaults to `/{profileUsername}`. */
+  oauthReturnTo?: string
 }) {
   const [user, setUser] = useState<User | null>(null)
   const [following, setFollowing] = useState(false)
@@ -48,10 +51,16 @@ export function FollowButton({
   }, [refresh])
 
   async function signInWithGoogle() {
-    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/${profileUsername}` : undefined
+    if (typeof window === 'undefined') return
+    const origin = window.location.origin
+    const path = oauthReturnTo
+      ? oauthReturnTo.startsWith('/')
+        ? oauthReturnTo
+        : `/${oauthReturnTo}`
+      : `/${profileUsername}`
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo },
+      options: { redirectTo: `${origin}${path}` },
     })
   }
 

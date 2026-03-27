@@ -1,0 +1,276 @@
+'use client'
+
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { User } from '@supabase/supabase-js'
+import { supabase } from '@/src/lib/supabase'
+
+const POST_IMAGES_BUCKET = 'post-images'
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024
+
+type Profile = {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+}
+
+export default function SettingsPage() {
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser()
+    setUser(u)
+    if (!u) {
+      setProfile(null)
+      setLoading(false)
+      return
+    }
+    const { data } = await supabase.from('profiles').select('id, username, display_name, avatar_url').eq('id', u.id).maybeSingle()
+    setProfile(data as Profile | null)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    void load()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      if (!session?.user) setProfile(null)
+      else void load()
+    })
+    return () => subscription.unsubscribe()
+  }, [load])
+
+  async function uploadAvatar(file: File) {
+    if (!user?.id) return
+    if (!file.type.startsWith('image/')) {
+      alert('Choose an image file.')
+      return
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      alert('Image must be 4 MB or smaller.')
+      return
+    }
+    setUploading(true)
+    const rawExt = file.name.split('.').pop() || 'jpg'
+    const ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'jpg'
+    const path = `${user.id}/avatar/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error: upErr } = await supabase.storage.from(POST_IMAGES_BUCKET).upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || 'image/jpeg',
+    })
+    if (upErr) {
+      alert(
+        `Upload failed: ${upErr.message}\n\nUse the same Storage setup as post images (supabase/storage-post-images.sql).`,
+      )
+      setUploading(false)
+      return
+    }
+    const { data } = supabase.storage.from(POST_IMAGES_BUCKET).getPublicUrl(path)
+    const publicUrl = data.publicUrl
+    const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    if (dbErr) {
+      alert(`Saved file but profile update failed: ${dbErr.message}`)
+      setUploading(false)
+      return
+    }
+    await load()
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function deleteAccount() {
+    if (!user) return
+    setDeleteBusy(true)
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const accessToken = session?.access_token
+    if (!accessToken) {
+      alert('Not signed in.')
+      setDeleteBusy(false)
+      return
+    }
+    const res = await fetch('/api/account', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    if (!res.ok) {
+      alert(body.error || 'Could not delete account.')
+      setDeleteBusy(false)
+      return
+    }
+    await supabase.auth.signOut()
+    router.push('/')
+    router.refresh()
+    setDeleteBusy(false)
+  }
+
+  const preview =
+    (profile?.avatar_url as string | undefined) || (user?.user_metadata?.avatar_url as string | undefined)
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#fafafa]">
+        <div className="mx-auto max-w-lg px-4 py-10">
+          <div className="h-8 w-48 animate-pulse rounded bg-zinc-200" />
+        </div>
+      </main>
+    )
+  }
+
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-[#fafafa]">
+        <div className="mx-auto max-w-lg px-4 py-10">
+          <p className="mb-4">
+            <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
+              ← Things I Like
+            </Link>
+          </p>
+          <h1 className="text-2xl font-light text-zinc-900">Settings</h1>
+          <p className="mt-4 text-sm text-zinc-500">Sign in to manage your account.</p>
+          <button
+            type="button"
+            onClick={() =>
+              void supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/settings` : undefined },
+              })
+            }
+            className="mt-4 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-[#fafafa]">
+      {deleteOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => !deleteBusy && setDeleteOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-acct-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-acct-title" className="text-lg font-medium text-zinc-900">
+              Delete your account?
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              This permanently removes your account, profile, and posts. This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeleteOpen(false)}
+                className="rounded-full px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void deleteAccount()}
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mx-auto max-w-lg px-4 py-10">
+        <p className="mb-6">
+          <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-800">
+            ← Things I Like
+          </Link>
+        </p>
+        <h1 className="mb-8 text-2xl font-light tracking-tight text-zinc-900">Settings</h1>
+
+        <section className="mb-10 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-900">Profile photo</h2>
+          <p className="mt-1 text-sm text-zinc-500">Shown on your posts and on Who&apos;s Here.</p>
+          <div className="mt-4 flex items-center gap-4">
+            {preview ? (
+              <img src={preview} alt="" className="h-16 w-16 rounded-full border border-zinc-200 object-cover" />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-lg text-zinc-400">
+                ?
+              </div>
+            )}
+            <div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void uploadAvatar(f)
+                }}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading…' : 'Change photo'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-red-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-red-900">Danger zone</h2>
+          <p className="mt-1 text-sm text-zinc-500">Remove your account and all content.</p>
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="mt-4 rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+          >
+            Delete account
+          </button>
+          <p className="mt-3 text-xs text-zinc-400">
+            Requires <code className="rounded bg-zinc-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code> on the server (Vercel
+            env). Without it, deletion will fail.
+          </p>
+        </section>
+
+        {profile ? (
+          <p className="mt-6 text-center text-xs text-zinc-400">
+            @{profile.username} ·{' '}
+            <Link href={`/${profile.username}`} className="text-zinc-500 hover:underline">
+              View your blog
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    </main>
+  )
+}

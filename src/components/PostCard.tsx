@@ -12,6 +12,51 @@ import {
   type Post,
 } from '@/src/lib/post-helpers'
 
+function HeartIcon({ filled, className }: { filled: boolean; className?: string }) {
+  if (filled) {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17l-.022.012-.007.003-.002.001h-.002Z" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+    </svg>
+  )
+}
+
+/** Retweet / reblog style (two opposing arrows). */
+function RethingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+}
+
 export function PostCard({
   post,
   isOwner,
@@ -259,22 +304,40 @@ export function PostCard({
 
       {post.caption ? <div className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: post.caption }} /> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div
+        className={`flex items-center justify-between gap-3 ${showEngagement ? 'mt-3 border-t border-zinc-100 pt-3' : 'mt-1 pt-0.5'}`}
+      >
         <p className="text-xs text-zinc-300">{postDate}</p>
         {showEngagement ? (
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center justify-end gap-1">
             {onLike ? (
-              <button
-                type="button"
-                onClick={onLike}
-                className={`text-xs font-medium ${liked ? 'text-red-600' : 'text-zinc-500 hover:text-zinc-800'}`}
-              >
-                {liked ? '♥ Liked' : '♡ Like'} {likeCount > 0 ? `(${likeCount})` : ''}
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={onLike}
+                  aria-label={liked ? 'Unlike' : 'Like'}
+                  aria-pressed={liked}
+                  className={`rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                    liked
+                      ? 'text-red-500 hover:bg-red-50'
+                      : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
+                  }`}
+                >
+                  <HeartIcon filled={!!liked} className="h-5 w-5" />
+                </button>
+                {likeCount > 0 ? (
+                  <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{likeCount}</span>
+                ) : null}
+              </div>
             ) : null}
             {onRething ? (
-              <button type="button" onClick={onRething} className="text-xs font-medium text-zinc-500 hover:text-zinc-800">
-                Rething
+              <button
+                type="button"
+                onClick={onRething}
+                aria-label="Rething"
+                className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
+              >
+                <RethingIcon className="h-5 w-5" />
               </button>
             ) : null}
           </div>

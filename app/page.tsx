@@ -2,6 +2,7 @@
 
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
+import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
 import { supabase } from '../src/lib/supabase'
 
 type Post = {
@@ -893,11 +894,12 @@ export default function Home() {
                     key={type}
                     type="button"
                     onClick={() => setPanel(panel === type ? null : type)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition ${
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
                       activeTypeButton(type) ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-[#dbdbdb] text-[#8e8e8e] hover:border-zinc-900 hover:text-zinc-900'
                     }`}
                   >
-                    {type}
+                    <ComposerTypeIcon type={type} />
+                    <span>{type}</span>
                   </button>
                 ))}
               </div>

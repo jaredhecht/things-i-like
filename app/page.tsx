@@ -11,8 +11,10 @@ import {
   getSpotifyEmbedUrl,
   getYouTubeVideoId,
   getHostnameLabel,
+  isSoundCloudUrl,
   isValidHttpUrl,
   normalizeLinkUrl,
+  soleSoundCloudUrlFromTextPost,
   stripHtml,
   type LinkPreview,
   type Post,
@@ -629,8 +631,15 @@ export default function Home() {
     const metadata: Record<string, unknown> = {}
 
     if (panel === 'text') {
-      type = 'text'
-      content = textContent.trim()
+      const trimmed = textContent.trim()
+      const soleSc = soleSoundCloudUrlFromTextPost(trimmed)
+      if (soleSc) {
+        type = 'soundcloud'
+        content = soleSc
+      } else {
+        type = 'text'
+        content = trimmed
+      }
     } else if (panel === 'quote') {
       type = 'quote'
       content = quoteContent.trim()
@@ -643,14 +652,24 @@ export default function Home() {
       else type = 'video'
       content = videoUrl.trim()
     } else if (panel === 'audio') {
-      if (audioUrl.includes('soundcloud.com')) type = 'soundcloud'
-      else if (audioUrl.includes('open.spotify.com')) type = 'spotify'
+      content = normalizeLinkUrl(audioUrl.trim())
+      if (isSoundCloudUrl(content)) type = 'soundcloud'
+      else if (content.includes('open.spotify.com')) type = 'spotify'
       else type = 'audio'
-      content = audioUrl.trim()
     } else if (panel === 'link') {
       if (linkTab === 'article') {
-        type = 'article'
-        content = articleUrl.trim()
+        const norm = normalizeLinkUrl(articleUrl.trim())
+        if (isSoundCloudUrl(norm)) {
+          type = 'soundcloud'
+          try {
+            content = new URL(norm).href
+          } catch {
+            content = norm
+          }
+        } else {
+          type = 'article'
+          content = norm
+        }
       } else if (linkTab === 'spotify') {
         type = 'spotify'
         content = spotifyUrl.trim()
@@ -660,7 +679,7 @@ export default function Home() {
       }
     }
 
-    if (isValidHttpUrl(content) && !metadata.link_preview) {
+    if (isValidHttpUrl(content) && !metadata.link_preview && type !== 'soundcloud') {
       const preview = await fetchLinkPreview(content)
       if (preview?.title) metadata.link_preview = preview
     }
@@ -1130,7 +1149,7 @@ export default function Home() {
                       {linkTab === 'article' ? (
                         <>
                           <div className="flex gap-2">
-                            <input type="url" value={articleUrl} onChange={(e) => setArticleUrl(e.target.value)} placeholder="Paste article URL..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
+                            <input type="url" value={articleUrl} onChange={(e) => setArticleUrl(e.target.value)} placeholder="Article or SoundCloud URL…" className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
                             <button
                               type="button"
                               onClick={() => fetchLinkPreview(articleUrl)}

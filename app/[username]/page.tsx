@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { FollowButton } from '@/src/components/FollowButton'
-import { PostCard } from '@/src/components/PostCard'
+import { ProfilePostList } from '@/src/components/ProfilePostList'
 import { fetchAllPostsForUserId } from '@/src/lib/posts-batched'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import type { Post } from '@/src/lib/post-helpers'
@@ -39,6 +39,28 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     throw e
   }
 
+  const initialLikeCounts: Record<string, number> = {}
+  for (const p of list) initialLikeCounts[p.id] = 0
+  if (list.length > 0) {
+    const ids = list.map((p) => p.id)
+    const chunkSize = 120
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const slice = ids.slice(i, i + chunkSize)
+      const { data: countRows, error: countErr } = await supabase.rpc('post_like_counts', { post_ids: slice })
+      if (countErr) {
+        console.warn('[username] post_like_counts RPC failed — run supabase/post-like-counts-rpc.sql:', countErr.message)
+        break
+      }
+      for (const row of countRows || []) {
+        const r = row as Record<string, unknown>
+        const pid = typeof r.post_id === 'string' ? r.post_id : String(r.post_id ?? '')
+        const lc = r.like_count
+        const n = typeof lc === 'number' ? lc : typeof lc === 'string' ? parseInt(lc, 10) : Number(lc)
+        if (pid) initialLikeCounts[pid] = Number.isFinite(n) ? n : 0
+      }
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#fafafa]">
       <div className="mx-auto max-w-2xl px-4 py-10">
@@ -59,12 +81,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </div>
         </header>
 
-        <section className="space-y-6">
-          {list.length === 0 ? <p className="py-12 text-center text-zinc-400">No posts yet.</p> : null}
-          {list.map((post) => (
-            <PostCard key={post.id} post={post} showAuthor={false} />
-          ))}
-        </section>
+        <ProfilePostList key={profile.id} posts={list} initialLikeCounts={initialLikeCounts} />
       </div>
     </main>
   )

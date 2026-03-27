@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
 function LightningIcon({ className }: { className?: string }) {
@@ -22,6 +23,8 @@ export function UserNavMenu({
   onSignOut: () => void
   hasUnreadNotifications?: boolean
 }) {
+  const pathname = usePathname()
+  const onWhosHere = pathname === '/whos-here'
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -44,7 +47,15 @@ export function UserNavMenu({
   }, [open])
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1 sm:gap-2">
+      <Link
+        href="/whos-here"
+        className={`shrink-0 rounded-md px-2.5 py-2 text-sm transition-colors hover:bg-zinc-100 ${
+          onWhosHere ? 'font-medium text-zinc-900' : 'text-zinc-500 hover:text-zinc-800'
+        }`}
+      >
+        Who&apos;s Here?
+      </Link>
       <Link
         href="/notifications"
         className={`rounded-full p-2 transition-colors hover:bg-zinc-100 ${
@@ -90,14 +101,6 @@ export function UserNavMenu({
               Your blog <span className="text-zinc-500">@{username}</span>
             </Link>
           ) : null}
-          <Link
-            href="/whos-here"
-            role="menuitem"
-            className="block px-4 py-2.5 text-sm text-zinc-800 hover:bg-zinc-50"
-            onClick={() => setOpen(false)}
-          >
-            Who&apos;s Here?
-          </Link>
           <Link
             href="/notifications"
             role="menuitem"

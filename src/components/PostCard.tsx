@@ -5,11 +5,15 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { linkifyAtMentionsInHtml } from '@/src/lib/linkify-mentions'
 import {
+  extractFirstSoundCloudUrl,
   getHostnameLabel,
   getLinkPreviewFromMetadata,
+  getSoundCloudWidgetSrc,
   getSpotifyEmbedUrl,
   getYouTubeVideoId,
+  isSoundCloudUrl,
   isValidHttpUrl,
+  normalizeSoundCloudStoredContent,
   type LinkPreview,
   type Post,
 } from '@/src/lib/post-helpers'
@@ -85,6 +89,7 @@ export function PostCard({
   authorAvatarUrl,
   showAuthor,
   dashboardActions,
+  profileLikeBar,
   likeCount = 0,
   liked,
   onLike,
@@ -100,6 +105,8 @@ export function PostCard({
   authorAvatarUrl?: string | null
   showAuthor?: boolean
   dashboardActions?: boolean
+  /** Public profile: show like counts; like button only when count > 0 (see PostCard footer). */
+  profileLikeBar?: boolean
   likeCount?: number
   liked?: boolean
   onLike?: () => void
@@ -113,6 +120,46 @@ export function PostCard({
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const htmlBody = useMemo(() => linkifyAtMentionsInHtml(post.content || ''), [post.content])
   const htmlCaption = useMemo(() => linkifyAtMentionsInHtml(post.caption || ''), [post.caption])
+  const soundCloudInText = useMemo(
+    () => (post.type === 'text' && post.content ? extractFirstSoundCloudUrl(post.content) : null),
+    [post.type, post.content],
+  )
+
+  const scTarget = useMemo(() => {
+    if (post.type === 'soundcloud' && post.content) return normalizeSoundCloudStoredContent(post.content)
+    if (post.type === 'text' && soundCloudInText) return normalizeSoundCloudStoredContent(soundCloudInText)
+    return ''
+  }, [post.type, post.content, soundCloudInText])
+
+  const [scResolvedPermalink, setScResolvedPermalink] = useState<string | null>(null)
+
+  useEffect(() => {
+    setScResolvedPermalink(null)
+    if (!scTarget || !isSoundCloudUrl(scTarget)) return
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const r = await fetch(`/api/soundcloud-resolve?url=${encodeURIComponent(scTarget)}`, {
+          signal: controller.signal,
+        })
+        if (!r.ok) return
+        const data = (await r.json()) as { resolvedUrl?: string }
+        if (controller.signal.aborted) return
+        if (typeof data.resolvedUrl === 'string' && isSoundCloudUrl(data.resolvedUrl)) {
+          setScResolvedPermalink(data.resolvedUrl)
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
+    return () => controller.abort()
+  }, [scTarget])
+
+  const scPermalink = (scResolvedPermalink && isSoundCloudUrl(scResolvedPermalink) ? scResolvedPermalink : null) || scTarget
+  const soundCloudWidgetSrc =
+    post.type === 'text' && soundCloudInText && scTarget ? getSoundCloudWidgetSrc(scPermalink) : null
+  const soundCloudPostSrc =
+    post.type === 'soundcloud' && scTarget ? getSoundCloudWidgetSrc(scPermalink) : null
 
   function handleRichTextLinkClick(e: React.MouseEvent<HTMLDivElement>) {
     const a = (e.target as HTMLElement).closest('a')
@@ -154,6 +201,7 @@ export function PostCard({
   }, [liveLinkPreview?.title, post.content, post.type])
 
   const showEngagement = dashboardActions && !isOwner && (onLike || onRething)
+  const showFooterDivider = showEngagement || profileLikeBar
   const originalHandle = post.rething_from_username?.trim()
   /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
   const showAuthorHandle = Boolean(
@@ -281,13 +329,24 @@ export function PostCard({
       ) : null}
 
       {post.type === 'soundcloud' && post.content ? (
-        <iframe
-          title="SoundCloud"
-          src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(post.content)}`}
-          width="100%"
-          height="120"
-          className="mb-4 rounded-md"
-        />
+        soundCloudPostSrc ? (
+          <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+            <iframe
+              key={scPermalink}
+              title="SoundCloud"
+              src={soundCloudPostSrc}
+              width="100%"
+              height={300}
+              className="block w-full border-0"
+              allow="autoplay"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
+            {post.content}
+          </a>
+        )
       ) : null}
 
       {post.type === 'image' && post.content ? (
@@ -335,12 +394,28 @@ export function PostCard({
       )}
 
       {post.type === 'text' && post.content ? (
-        <div
-          role="presentation"
-          onClick={handleRichTextLinkClick}
-          className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline"
-          dangerouslySetInnerHTML={{ __html: htmlBody }}
-        />
+        <>
+          <div
+            role="presentation"
+            onClick={handleRichTextLinkClick}
+            className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline"
+            dangerouslySetInnerHTML={{ __html: htmlBody }}
+          />
+          {soundCloudWidgetSrc ? (
+            <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+              <iframe
+                key={scPermalink}
+                title="SoundCloud"
+                src={soundCloudWidgetSrc}
+                width="100%"
+                height={300}
+                className="block w-full border-0"
+                allow="autoplay"
+                loading="lazy"
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
       {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text'].includes(post.type) && post.content ? (
         <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
@@ -358,7 +433,7 @@ export function PostCard({
       ) : null}
 
       <div
-        className={`flex items-center justify-between gap-3 ${showEngagement ? 'mt-3 border-t border-zinc-100 pt-3' : 'mt-1 pt-0.5'}`}
+        className={`flex items-center justify-between gap-3 ${showFooterDivider ? 'mt-3 border-t border-zinc-100 pt-3' : 'mt-1 pt-0.5'}`}
       >
         <p className="text-xs text-zinc-300">{postDate}</p>
         {showEngagement ? (
@@ -391,6 +466,27 @@ export function PostCard({
                 className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
               >
                 <RethingIcon className="h-5 w-5" />
+              </button>
+            ) : null}
+          </div>
+        ) : profileLikeBar ? (
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            <span className="text-xs tabular-nums text-zinc-500">
+              {likeCount === 1 ? '1 like' : `${likeCount} likes`}
+            </span>
+            {likeCount > 0 && onLike ? (
+              <button
+                type="button"
+                onClick={onLike}
+                aria-label={liked ? 'Unlike' : 'Like'}
+                aria-pressed={liked}
+                className={`rounded-full p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  liked
+                    ? 'text-red-500 hover:bg-red-50'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'
+                }`}
+              >
+                <HeartIcon filled={!!liked} className="h-5 w-5" />
               </button>
             ) : null}
           </div>

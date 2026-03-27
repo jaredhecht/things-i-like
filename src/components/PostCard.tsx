@@ -16,9 +16,7 @@ export function PostCard({
   post,
   isOwner,
   authorUsername,
-  authorDisplayName,
   authorAvatarUrl,
-  authorPreferDisplayName,
   showAuthor,
   dashboardActions,
   likeCount = 0,
@@ -33,11 +31,7 @@ export function PostCard({
   post: Post
   isOwner?: boolean
   authorUsername?: string | null
-  /** Used when authorPreferDisplayName is true; ignored for public preview. */
-  authorDisplayName?: string | null
   authorAvatarUrl?: string | null
-  /** Signed-in dashboard: show display name (else @username). Signed-out: always @username. */
-  authorPreferDisplayName?: boolean
   showAuthor?: boolean
   dashboardActions?: boolean
   likeCount?: number
@@ -81,11 +75,25 @@ export function PostCard({
 
   const showEngagement = dashboardActions && !isOwner && (onLike || onRething)
   const originalHandle = post.rething_from_username?.trim()
+  /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
+  const showAuthorHandle = Boolean(
+    authorUsername && !(isOwner && dashboardActions),
+  )
+
+  const avatarImg = authorAvatarUrl ? (
+    <img
+      src={authorAvatarUrl}
+      alt=""
+      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 object-cover"
+    />
+  ) : (
+    <div className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 bg-zinc-100" aria-hidden />
+  )
 
   return (
     <article className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="relative mb-3 flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="relative mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 pr-2">
           {originalHandle ? (
             <p className="mb-1 text-xs text-zinc-500">
               Rething from{' '}
@@ -94,81 +102,66 @@ export function PostCard({
               </Link>
             </p>
           ) : null}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
-            {showAuthor && authorUsername ? (
-              <>
-                <span className="text-zinc-300">·</span>
-                <span className="inline-flex max-w-full items-center gap-2">
-                  {authorAvatarUrl ? (
-                    <img
-                      src={authorAvatarUrl}
-                      alt=""
-                      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 bg-zinc-100"
-                      aria-hidden
-                    />
-                  )}
-                  <Link
-                    href={`/${authorUsername}`}
-                    className="min-w-0 truncate text-sm font-medium text-zinc-800 hover:underline"
-                  >
-                    {authorPreferDisplayName && authorDisplayName?.trim()
-                      ? authorDisplayName.trim()
-                      : `@${authorUsername}`}
-                  </Link>
-                </span>
-              </>
-            ) : null}
-          </div>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
         </div>
-        {isOwner ? (
-          <div className="relative shrink-0" data-post-menu-root>
-            <button
-              type="button"
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-label="Post options"
-              onClick={(e) => {
-                e.stopPropagation()
-                onMenuToggle?.()
-              }}
-              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+        <div className="flex shrink-0 items-center gap-1.5">
+          {showAuthor && authorUsername ? (
+            <Link
+              href={`/${authorUsername}`}
+              className="flex max-w-[min(100%,12rem)] items-center gap-2 rounded-md py-0.5 pl-0.5 pr-1 hover:bg-zinc-50"
+              aria-label={showAuthorHandle ? `@${authorUsername}` : `Your profile @${authorUsername}`}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <circle cx="12" cy="6" r="1.75" />
-                <circle cx="12" cy="12" r="1.75" />
-                <circle cx="12" cy="18" r="1.75" />
-              </svg>
-            </button>
-            {menuOpen ? (
-              <div
-                className="absolute right-0 top-full z-10 mt-0.5 min-w-[148px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
-                role="menu"
+              {avatarImg}
+              {showAuthorHandle ? (
+                <span className="truncate text-sm font-medium text-zinc-800">@{authorUsername}</span>
+              ) : null}
+            </Link>
+          ) : null}
+          {isOwner ? (
+            <div className="relative shrink-0" data-post-menu-root>
+              <button
+                type="button"
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                aria-label="Post options"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onMenuToggle?.()
+                }}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                  onClick={() => onEditClick?.()}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <circle cx="12" cy="6" r="1.75" />
+                  <circle cx="12" cy="12" r="1.75" />
+                  <circle cx="12" cy="18" r="1.75" />
+                </svg>
+              </button>
+              {menuOpen ? (
+                <div
+                  className="absolute right-0 top-full z-10 mt-0.5 min-w-[148px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
+                  role="menu"
                 >
-                  Edit post
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                  onClick={() => onDeleteClick?.()}
-                >
-                  Delete post
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => onEditClick?.()}
+                  >
+                    Edit post
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => onDeleteClick?.()}
+                  >
+                    Delete post
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {post.type === 'youtube' && post.content ? (

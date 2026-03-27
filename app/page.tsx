@@ -1152,9 +1152,7 @@ export default function Home() {
                 post={post}
                 isOwner={user?.id === post.user_id}
                 authorUsername={author?.username ?? null}
-                authorDisplayName={author?.display_name ?? null}
                 authorAvatarUrl={author?.avatar_url ?? null}
-                authorPreferDisplayName={!!user}
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}

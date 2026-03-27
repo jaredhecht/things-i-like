@@ -231,8 +231,17 @@ function PostCard({ post }: { post: Post }) {
       ) : null}
 
       {post.type === 'image' && post.content ? (
-        <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block">
-          <img src={post.content} alt="Post image" className="h-auto w-full rounded-md object-cover" />
+        <a
+          href={post.content}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-4 block overflow-hidden rounded-md bg-zinc-100"
+        >
+          <img
+            src={post.content}
+            alt="Post image"
+            className="mx-auto max-h-[min(60vh,520px)] w-full object-contain"
+          />
         </a>
       ) : null}
 

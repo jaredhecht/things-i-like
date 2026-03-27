@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 
 function LightningIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08-.07-.19C11.23 8.84 13.5 4 13.5 4L18 3l-1 7h3.5c.49 0 .56.23.5.66l-.08.09C18.93 11.71 17.5 15 17.5 15L12 16l-1 5z" />
+    <svg className={className} viewBox="0 0 24 40" fill="none" aria-hidden>
+      <path d="M19 2L5 22H14L9 38L23 18H14L19 2Z" fill="currentColor" />
     </svg>
   )
 }
@@ -52,7 +52,7 @@ export function UserNavMenu({
         }`}
         aria-label={hasUnreadNotifications ? 'Notifications (unread)' : 'Notifications'}
       >
-        <LightningIcon className="h-5 w-5" />
+        <LightningIcon className="h-5 w-3" />
       </Link>
       <div className="relative" ref={rootRef}>
       <button

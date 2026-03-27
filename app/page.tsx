@@ -235,7 +235,7 @@ function PostCard({ post }: { post: Post }) {
           href={post.content}
           target="_blank"
           rel="noopener noreferrer"
-          className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-zinc-100 p-1"
+          className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-white p-1"
         >
           <img
             src={post.content}

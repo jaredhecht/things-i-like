@@ -24,6 +24,11 @@ type Profile = {
   display_name: string | null
 }
 
+type AuthorMeta = {
+  username: string
+  display_name: string | null
+}
+
 type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
 type LinkTab = 'article' | 'spotify' | 'youtube'
 type EditorTarget = 'text' | 'caption' | 'editContent' | 'editCaption'
@@ -128,7 +133,7 @@ export default function Home() {
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
   const [deleteConfirmPost, setDeleteConfirmPost] = useState<Post | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [authorUsernames, setAuthorUsernames] = useState<Record<string, string>>({})
+  const [authorByUserId, setAuthorByUserId] = useState<Record<string, AuthorMeta>>({})
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [rethingSource, setRethingSource] = useState<Post | null>(null)
@@ -254,6 +259,34 @@ export default function Home() {
     setLikedPostIds(my)
   }, [])
 
+  const loadPublicPreviewPosts = useCallback(async () => {
+    const { data: rows, error } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10)
+    if (error) {
+      console.error('Error loading public preview posts:', error)
+      setPosts([])
+      setAuthorByUserId({})
+      return
+    }
+    const list = (rows || []) as Post[]
+    const ids = [...new Set(list.map((p) => p.user_id).filter(Boolean))] as string[]
+    if (ids.length === 0) {
+      setPosts(list)
+      setAuthorByUserId({})
+      return
+    }
+    const { data: profs } = await supabase.from('profiles').select('id, username, display_name').in('id', ids)
+    const map: Record<string, AuthorMeta> = {}
+    for (const p of profs || []) {
+      map[p.id] = { username: p.username, display_name: p.display_name }
+    }
+    setPosts(list)
+    setAuthorByUserId(map)
+  }, [])
+
   const fetchFeedForUser = useCallback(
     async (userId: string) => {
       const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
@@ -266,10 +299,12 @@ export default function Home() {
       } catch (error) {
         console.error('Error fetching feed:', error)
       }
-      const { data: profs } = await supabase.from('profiles').select('id, username').in('id', authorIds)
-      const map: Record<string, string> = {}
-      for (const p of profs || []) map[p.id] = p.username
-      setAuthorUsernames(map)
+      const { data: profs } = await supabase.from('profiles').select('id, username, display_name').in('id', authorIds)
+      const map: Record<string, AuthorMeta> = {}
+      for (const p of profs || []) {
+        map[p.id] = { username: p.username, display_name: p.display_name }
+      }
+      setAuthorByUserId(map)
       setPosts(list)
       await hydrateEngagement(userId, list)
     },
@@ -315,7 +350,7 @@ export default function Home() {
     setRethingBusy(true)
     const origAuthor =
       (rethingSource.rething_from_username && rethingSource.rething_from_username.trim()) ||
-      (rethingSource.user_id ? authorUsernames[rethingSource.user_id] : '') ||
+      (rethingSource.user_id ? authorByUserId[rethingSource.user_id]?.username : '') ||
       'someone'
     const metadata =
       rethingSource.metadata && typeof rethingSource.metadata === 'object' ? { ...rethingSource.metadata } : {}
@@ -352,10 +387,6 @@ export default function Home() {
       if (!currentUser) {
         setProfile(null)
         setNeedsUsername(false)
-        setPosts([])
-        setAuthorUsernames({})
-        setLikeCounts({})
-        setLikedPostIds(new Set())
       }
     })
 
@@ -364,14 +395,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!user?.id) {
-      setPosts([])
-      setAuthorUsernames({})
       setLikeCounts({})
       setLikedPostIds(new Set())
+      void loadPublicPreviewPosts()
       return
     }
     void fetchFeedForUser(user.id)
-  }, [user?.id, fetchFeedForUser])
+  }, [user?.id, fetchFeedForUser, loadPublicPreviewPosts])
 
   function resetComposer() {
     setTextContent('')
@@ -1082,18 +1112,25 @@ export default function Home() {
         ) : null}
 
         <section className="space-y-6">
-          {!user ? (
-            <p className="py-12 text-center text-zinc-400">Sign in to see posts from people you follow.</p>
-          ) : posts.length === 0 ? (
+          {!user && posts.length > 0 ? (
+            <h2 className="text-sm font-medium text-zinc-600">Latest posts</h2>
+          ) : null}
+          {user && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">No posts yet. Follow someone or share something you like.</p>
           ) : null}
-          {posts.map((post) => (
+          {!user && posts.length === 0 ? (
+            <p className="py-12 text-center text-zinc-400">Nothing posted yet. Sign in to share something you like.</p>
+          ) : null}
+          {posts.map((post) => {
+            const author = post.user_id ? authorByUserId[post.user_id] : undefined
+            return (
             <div key={post.id}>
               <PostCard
                 post={post}
                 isOwner={user?.id === post.user_id}
-                authorUsername={post.user_id ? authorUsernames[post.user_id] : null}
-                showAuthor={!!user}
+                authorUsername={author?.username ?? null}
+                authorDisplayName={author?.display_name ?? null}
+                showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}
                 liked={likedPostIds.has(post.id)}
@@ -1153,7 +1190,8 @@ export default function Home() {
                 </div>
               ) : null}
             </div>
-          ))}
+            )
+          })}
         </section>
       </div>
     </main>

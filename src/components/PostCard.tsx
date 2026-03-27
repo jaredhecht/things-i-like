@@ -16,6 +16,7 @@ export function PostCard({
   post,
   isOwner,
   authorUsername,
+  authorDisplayName,
   showAuthor,
   dashboardActions,
   likeCount = 0,
@@ -30,6 +31,8 @@ export function PostCard({
   post: Post
   isOwner?: boolean
   authorUsername?: string | null
+  /** Shown as the primary label; falls back to @username. */
+  authorDisplayName?: string | null
   showAuthor?: boolean
   dashboardActions?: boolean
   likeCount?: number
@@ -91,8 +94,11 @@ export function PostCard({
             {showAuthor && authorUsername ? (
               <>
                 <span className="text-zinc-300">·</span>
-                <Link href={`/${authorUsername}`} className="text-[11px] font-medium tracking-tight text-zinc-600 hover:underline">
-                  @{authorUsername}
+                <Link
+                  href={`/${authorUsername}`}
+                  className="text-sm font-medium text-zinc-800 hover:underline"
+                >
+                  {authorDisplayName?.trim() || `@${authorUsername}`}
                 </Link>
               </>
             ) : null}

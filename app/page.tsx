@@ -557,11 +557,16 @@ export default function Home() {
   }
 
   async function saveEdit(post: Post) {
-    if (!editingPostId) return
+    if (!editingPostId || !user?.id) return
     setEditingLoading(true)
+    const contentFromDom =
+      editingPostType === 'text' || editingPostType === 'quote'
+        ? (editContentEditorRef.current?.innerHTML ?? editingContent).trim()
+        : editingContent.trim()
+    const captionFromDom = (editCaptionEditorRef.current?.innerHTML ?? editingCaption).trim()
     const updates: { content: string; caption: string | null; metadata?: Record<string, unknown> } = {
-      content: editingContent.trim(),
-      caption: stripHtml(editingCaption).length ? editingCaption.trim() : null,
+      content: contentFromDom,
+      caption: stripHtml(captionFromDom).length ? captionFromDom : null,
     }
 
     if (post.type === 'article' && isValidHttpUrl(updates.content)) {
@@ -574,11 +579,22 @@ export default function Home() {
       }
     }
 
-    const { error } = await supabase.from('posts').update(updates).eq('id', post.id).eq('user_id', user?.id || '')
-    if (error) alert(`Could not update post: ${error.message}`)
-    else {
+    const { data, error } = await supabase
+      .from('posts')
+      .update(updates)
+      .eq('id', post.id)
+      .eq('user_id', user.id)
+      .select('id')
+
+    if (error) {
+      alert(`Could not update post: ${error.message}`)
+    } else if (!data?.length) {
+      alert(
+        'Could not save your edit (no rows updated). This usually means Supabase Row Level Security is missing an UPDATE policy for the posts table. Run the SQL in supabase/policies-posts-update.sql in the Supabase SQL editor, then try again.',
+      )
+    } else {
       cancelEditing()
-      fetchPosts()
+      await fetchPosts()
     }
     setEditingLoading(false)
   }

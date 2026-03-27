@@ -1,6 +1,6 @@
 'use client'
 
-import { RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../src/lib/supabase'
 
@@ -30,6 +30,9 @@ type LinkPreview = {
   description: string
   image: string
 }
+
+const POST_IMAGES_BUCKET = 'post-images'
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024
 
 function getSpotifyEmbedUrl(url: string): string | null {
   const match = url.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/)
@@ -355,6 +358,9 @@ export default function Home() {
   const [quoteContent, setQuoteContent] = useState('')
   const [quoteAuthor, setQuoteAuthor] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [imageLocalPreview, setImageLocalPreview] = useState<string | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageDropActive, setImageDropActive] = useState(false)
   const [videoUrl, setVideoUrl] = useState('')
   const [spotifyUrl, setSpotifyUrl] = useState('')
   const [youtubeUrl, setYoutubeUrl] = useState('')
@@ -378,6 +384,62 @@ export default function Home() {
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const editContentEditorRef = useRef<HTMLDivElement | null>(null)
   const editCaptionEditorRef = useRef<HTMLDivElement | null>(null)
+  const imageFileInputRef = useRef<HTMLInputElement>(null)
+
+  function clearImageComposerState() {
+    setImageLocalPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setImageUrl('')
+    setImageUploading(false)
+  }
+
+  const uploadImageFile = useCallback(
+    async (file: File) => {
+      if (!user?.id) {
+        alert('Sign in to upload images.')
+        return
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Please choose an image file (JPG, PNG, GIF, or WebP).')
+        return
+      }
+      if (file.size > IMAGE_MAX_BYTES) {
+        alert('Image must be 8 MB or smaller.')
+        return
+      }
+      setImageUrl('')
+      setImageLocalPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return URL.createObjectURL(file)
+      })
+      setImageUploading(true)
+      const rawExt = file.name.split('.').pop() || 'jpg'
+      const ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'jpg'
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+      const { error } = await supabase.storage.from(POST_IMAGES_BUCKET).upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'image/jpeg',
+      })
+      setImageUploading(false)
+      setImageLocalPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      if (error) {
+        alert(
+          `Could not upload image: ${error.message}\n\nIf storage is not set up yet, run the script supabase/storage-post-images.sql once in Supabase → SQL Editor.`,
+        )
+        setImageUrl('')
+        return
+      }
+      const { data } = supabase.storage.from(POST_IMAGES_BUCKET).getPublicUrl(path)
+      setImageUrl(data.publicUrl)
+    },
+    [user?.id],
+  )
 
   async function loadProfile(userId: string) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
@@ -451,7 +513,7 @@ export default function Home() {
     setTextContent('')
     setQuoteContent('')
     setQuoteAuthor('')
-    setImageUrl('')
+    clearImageComposerState()
     setVideoUrl('')
     setSpotifyUrl('')
     setYoutubeUrl('')
@@ -467,7 +529,7 @@ export default function Home() {
     if (!panel) return false
     if (panel === 'text') return stripHtml(textContent).length > 0
     if (panel === 'quote') return quoteContent.trim().length > 0
-    if (panel === 'image') return imageUrl.trim().length > 0
+    if (panel === 'image') return imageUrl.trim().length > 0 && !imageUploading
     if (panel === 'video') return videoUrl.trim().length > 0
     if (panel === 'audio') return audioUrl.trim().length > 0
     if (panel === 'link') {
@@ -476,7 +538,7 @@ export default function Home() {
       return youtubeUrl.trim().length > 0
     }
     return false
-  }, [panel, textContent, quoteContent, imageUrl, videoUrl, audioUrl, linkTab, articleUrl, spotifyUrl, youtubeUrl])
+  }, [panel, textContent, quoteContent, imageUrl, imageUploading, videoUrl, audioUrl, linkTab, articleUrl, spotifyUrl, youtubeUrl])
 
   function syncRichTextFromActiveEditor() {
     if (!activeEditor) return
@@ -558,6 +620,25 @@ export default function Home() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [deleteConfirmPost, deleteLoading])
+
+  useEffect(() => {
+    if (panel !== 'image') return
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i]
+        if (item?.kind === 'file' && item.type.startsWith('image/')) {
+          e.preventDefault()
+          const f = item.getAsFile()
+          if (f) void uploadImageFile(f)
+          break
+        }
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [panel, uploadImageFile])
 
   async function createPost() {
     if (!user || !panel || !canPost) return
@@ -826,7 +907,118 @@ export default function Home() {
               <div className="border-t border-[#dbdbdb]">
                 <div className="p-3.5">
                   {panel === 'image' ? (
-                    <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste image URL..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
+                    <div className="space-y-3">
+                      <input
+                        ref={imageFileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) void uploadImageFile(f)
+                          e.target.value = ''
+                        }}
+                      />
+                      {!imageUrl && !imageLocalPreview ? (
+                        <div
+                          className={`flex overflow-hidden rounded-[4px] border-[1.5px] border-dashed border-[#dbdbdb] transition-colors ${
+                            imageDropActive ? 'bg-zinc-50' : ''
+                          }`}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            setImageDropActive(true)
+                          }}
+                          onDragLeave={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) setImageDropActive(false)
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            setImageDropActive(false)
+                            const f = e.dataTransfer.files?.[0]
+                            if (f?.type.startsWith('image/')) void uploadImageFile(f)
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => imageFileInputRef.current?.click()}
+                            className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center transition-colors hover:bg-zinc-50"
+                          >
+                            <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <polyline points="16 16 12 12 8 16" />
+                              <line x1="12" y1="12" x2="12" y2="21" />
+                              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+                            </svg>
+                            <span className="text-sm font-semibold text-zinc-900">
+                              Drop or <span className="text-[#0095f6]">browse</span>
+                            </span>
+                            <span className="text-xs text-[#8e8e8e]">JPG, PNG, GIF, WebP</span>
+                          </button>
+                          <div className="w-px shrink-0 bg-[#dbdbdb]" />
+                          <span className="flex shrink-0 items-center px-2 text-[11px] text-[#b8b8b8]">or</span>
+                          <div className="w-px shrink-0 bg-[#dbdbdb]" />
+                          <button
+                            type="button"
+                            tabIndex={0}
+                            onClick={(e) => (e.target as HTMLElement).focus()}
+                            className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center outline-none transition-colors focus:bg-[#f0f6ff] focus:ring-2 focus:ring-inset focus:ring-blue-200"
+                          >
+                            <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8] focus-within:text-[#0095f6]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                              <rect x="9" y="2" width="6" height="4" rx="1" />
+                              <path d="M9 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-3" />
+                              <line x1="12" y1="11" x2="12" y2="17" />
+                              <line x1="9" y1="14" x2="15" y2="14" />
+                            </svg>
+                            <span className="text-sm font-semibold text-zinc-900">Click, then paste</span>
+                            <span className="text-xs text-[#8e8e8e]">Cmd+V / Ctrl+V</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="relative overflow-hidden rounded-[4px] border border-[#dbdbdb]">
+                          <img
+                            src={imageLocalPreview || imageUrl}
+                            alt="Selected"
+                            className="mx-auto max-h-[min(50vh,400px)] w-full object-contain bg-white"
+                          />
+                          {imageUploading ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm font-medium text-zinc-600">Uploading…</div>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => clearImageComposerState()}
+                            disabled={imageUploading}
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/70 disabled:opacity-50"
+                            aria-label="Remove image"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                      <div>
+                        <p className="mb-1 text-xs text-[#8e8e8e]">Or paste an image URL</p>
+                        <input
+                          type="url"
+                          value={imageUrl}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            if (!raw.trim()) {
+                              clearImageComposerState()
+                              return
+                            }
+                            setImageUrl(raw)
+                            setImageLocalPreview((prev) => {
+                              if (prev) URL.revokeObjectURL(prev)
+                              return null
+                            })
+                          }}
+                          placeholder="https://…"
+                          disabled={imageUploading}
+                          className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
                   ) : null}
 
                   {panel === 'video' ? (
@@ -942,7 +1134,7 @@ export default function Home() {
                     {panel === 'text' ? `${textCount} / 500` : ''}
                   </p>
                   <button type="button" onClick={resetComposer} className="text-[13px] font-semibold text-[#8e8e8e] hover:text-zinc-900">Cancel</button>
-                  <button type="button" onClick={createPost} disabled={!canPost || loading} className="rounded-full bg-zinc-900 px-4.5 py-1.5 text-[13px] font-bold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" onClick={createPost} disabled={!canPost || loading || imageUploading} className="rounded-full bg-zinc-900 px-4.5 py-1.5 text-[13px] font-bold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40">
                     {loading ? 'Posting...' : 'Post'}
                   </button>
                 </div>

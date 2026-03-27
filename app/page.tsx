@@ -1,19 +1,21 @@
 'use client'
 
+import Link from 'next/link'
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
+import { PostCard } from '../src/components/PostCard'
+import {
+  getSpotifyEmbedUrl,
+  getYouTubeVideoId,
+  getHostnameLabel,
+  isValidHttpUrl,
+  normalizeLinkUrl,
+  stripHtml,
+  type LinkPreview,
+  type Post,
+} from '../src/lib/post-helpers'
 import { supabase } from '../src/lib/supabase'
-
-type Post = {
-  id: string
-  type: string
-  content: string | null
-  caption: string | null
-  metadata: Record<string, unknown> | null
-  created_at: string
-  user_id: string | null
-}
 
 type Profile = {
   id: string
@@ -24,71 +26,9 @@ type Profile = {
 type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
 type LinkTab = 'article' | 'spotify' | 'youtube'
 type EditorTarget = 'text' | 'caption' | 'editContent' | 'editCaption'
-type LinkPreview = {
-  url: string
-  siteName: string
-  title: string
-  description: string
-  image: string
-}
 
 const POST_IMAGES_BUCKET = 'post-images'
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024
-
-function getSpotifyEmbedUrl(url: string): string | null {
-  const match = url.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/)
-  return match ? `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0` : null
-}
-
-function getYouTubeVideoId(url: string): string | null {
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
-  return match ? match[1] : null
-}
-
-function getHostnameLabel(url: string): string {
-  try {
-    const hostname = new URL(url).hostname.replace('www.', '')
-    return hostname.split('.')[0] || hostname
-  } catch {
-    return 'link'
-  }
-}
-
-function stripHtml(html: string): string {
-  if (!html) return ''
-  return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function normalizeLinkUrl(input: string): string {
-  const trimmed = input.trim()
-  if (!trimmed) return ''
-  if (/^https?:\/\//i.test(trimmed)) return trimmed
-  if (/^(mailto:|tel:)/i.test(trimmed)) return trimmed
-  return `https://${trimmed}`
-}
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
-function getLinkPreviewFromMetadata(metadata: Record<string, unknown> | null): LinkPreview | null {
-  if (!metadata || typeof metadata !== 'object') return null
-  const link = metadata.link_preview
-  if (!link || typeof link !== 'object') return null
-  const candidate = link as Record<string, unknown>
-  return {
-    url: typeof candidate.url === 'string' ? candidate.url : '',
-    siteName: typeof candidate.siteName === 'string' ? candidate.siteName : '',
-    title: typeof candidate.title === 'string' ? candidate.title : '',
-    description: typeof candidate.description === 'string' ? candidate.description : '',
-    image: typeof candidate.image === 'string' ? candidate.image : '',
-  }
-}
 
 function RichTextEditor({
   value,
@@ -153,200 +93,6 @@ function RichTextEditor({
   )
 }
 
-function PostCard({
-  post,
-  isOwner,
-  menuOpen,
-  onMenuToggle,
-  onEditClick,
-  onDeleteClick,
-}: {
-  post: Post
-  isOwner?: boolean
-  menuOpen?: boolean
-  onMenuToggle?: () => void
-  onEditClick?: () => void
-  onDeleteClick?: () => void
-}) {
-  const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  const quoteAuthor = typeof post.metadata?.author === 'string' ? post.metadata.author : ''
-  const storedLinkPreview = getLinkPreviewFromMetadata(post.metadata)
-  const [liveLinkPreview, setLiveLinkPreview] = useState<LinkPreview | null>(storedLinkPreview)
-  const renderPrettyLinkCard = !!post.content && !!liveLinkPreview?.title
-
-  useEffect(() => {
-    if (post.type !== 'article' || !post.content || liveLinkPreview?.title || !isValidHttpUrl(post.content)) return
-    const controller = new AbortController()
-    const loadPreview = async () => {
-      try {
-        const response = await fetch(`/api/link-preview?url=${encodeURIComponent(post.content || '')}`, { signal: controller.signal })
-        if (!response.ok) return
-        const data = await response.json()
-        if (controller.signal.aborted) return
-        setLiveLinkPreview({
-          url: typeof data.url === 'string' ? data.url : post.content || '',
-          siteName: typeof data.siteName === 'string' ? data.siteName : '',
-          title: typeof data.title === 'string' ? data.title : '',
-          description: typeof data.description === 'string' ? data.description : '',
-          image: typeof data.image === 'string' ? data.image : '',
-        })
-      } catch {
-        // Keep fallback rendering if preview request fails.
-      }
-    }
-    void loadPreview()
-    return () => controller.abort()
-  }, [liveLinkPreview?.title, post.content, post.type])
-
-  return (
-    <article className="rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="relative mb-3 flex items-start justify-between gap-2">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
-        {isOwner ? (
-          <div className="relative shrink-0" data-post-menu-root>
-            <button
-              type="button"
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-label="Post options"
-              onClick={(e) => {
-                e.stopPropagation()
-                onMenuToggle?.()
-              }}
-              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <circle cx="12" cy="6" r="1.75" />
-                <circle cx="12" cy="12" r="1.75" />
-                <circle cx="12" cy="18" r="1.75" />
-              </svg>
-            </button>
-            {menuOpen ? (
-              <div
-                className="absolute right-0 top-full z-10 mt-0.5 min-w-[148px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
-                role="menu"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                  onClick={() => onEditClick?.()}
-                >
-                  Edit post
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                  onClick={() => onDeleteClick?.()}
-                >
-                  Delete post
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      {post.type === 'youtube' && post.content ? (
-        getYouTubeVideoId(post.content) ? (
-          <div className="relative mb-4 w-full overflow-hidden rounded-md bg-black" style={{ paddingBottom: '56.25%' }}>
-            <iframe
-              src={`https://www.youtube.com/embed/${getYouTubeVideoId(post.content)}`}
-              className="absolute left-0 top-0 h-full w-full"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
-            {post.content}
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'spotify' && post.content ? (
-        getSpotifyEmbedUrl(post.content) ? (
-          <iframe
-            src={getSpotifyEmbedUrl(post.content) || ''}
-            width="100%"
-            height="152"
-            frameBorder="0"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            className="mb-4 rounded-md"
-          />
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
-            {post.content}
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'soundcloud' && post.content ? (
-        <iframe
-          title="SoundCloud"
-          src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(post.content)}`}
-          width="100%"
-          height="120"
-          className="mb-4 rounded-md"
-        />
-      ) : null}
-
-      {post.type === 'image' && post.content ? (
-        <a
-          href={post.content}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-white p-1"
-        >
-          <img
-            src={post.content}
-            alt="Post image"
-            className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
-          />
-        </a>
-      ) : null}
-
-      {post.type === 'article' && post.content ? (
-        renderPrettyLinkCard ? (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block overflow-hidden rounded-md border border-zinc-200 hover:bg-zinc-50">
-            {liveLinkPreview?.image ? <img src={liveLinkPreview.image} alt={liveLinkPreview.title} className="h-48 w-full object-cover" /> : null}
-            <div className="p-4">
-              <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{liveLinkPreview?.siteName || getHostnameLabel(post.content)}</p>
-              <p className="mb-1 text-sm font-semibold text-zinc-900">{liveLinkPreview?.title}</p>
-              {liveLinkPreview?.description ? <p className="line-clamp-2 text-sm text-zinc-500">{liveLinkPreview.description}</p> : null}
-            </div>
-          </a>
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block rounded-md border border-zinc-200 p-4 hover:bg-zinc-50">
-            <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{getHostnameLabel(post.content)}</p>
-            <p className="break-all text-sm font-medium text-zinc-800">{post.content}</p>
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'quote' && (
-        <>
-          <blockquote className="mb-2 text-xl font-light italic leading-relaxed text-zinc-900">&ldquo;{post.content}&rdquo;</blockquote>
-          {quoteAuthor ? <p className="mb-3 text-sm italic text-zinc-500">- {quoteAuthor}</p> : null}
-        </>
-      )}
-
-      {post.type === 'text' && post.content ? <div className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: post.content }} /> : null}
-      {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text'].includes(post.type) && post.content ? (
-        <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
-          {post.content}
-        </a>
-      ) : null}
-
-      {post.caption ? <div className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline" dangerouslySetInnerHTML={{ __html: post.caption }} /> : null}
-      <p className="text-xs text-zinc-300">{postDate}</p>
-    </article>
-  )
-}
-
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -381,6 +127,12 @@ export default function Home() {
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
   const [deleteConfirmPost, setDeleteConfirmPost] = useState<Post | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [authorUsernames, setAuthorUsernames] = useState<Record<string, string>>({})
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
+  const [rethingSource, setRethingSource] = useState<Post | null>(null)
+  const [rethingCaption, setRethingCaption] = useState('')
+  const [rethingBusy, setRethingBusy] = useState(false)
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const editContentEditorRef = useRef<HTMLDivElement | null>(null)
@@ -479,10 +231,106 @@ export default function Home() {
     setProfile(null)
   }
 
-  async function fetchPosts() {
-    const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false })
-    if (error) console.error('Error fetching posts:', error)
-    if (data) setPosts(data)
+  const hydrateEngagement = useCallback(async (userId: string, list: Post[]) => {
+    if (list.length === 0) {
+      setLikeCounts({})
+      setLikedPostIds(new Set())
+      return
+    }
+    const ids = list.map((p) => p.id)
+    const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', ids)
+    const countByPost: Record<string, number> = {}
+    const my = new Set<string>()
+    for (const row of likesRows || []) {
+      countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
+      if (row.user_id === userId) my.add(row.post_id)
+    }
+    setLikeCounts(countByPost)
+    setLikedPostIds(my)
+  }, [])
+
+  const fetchFeedForUser = useCallback(
+    async (userId: string) => {
+      const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+      if (followErr) console.error('Error fetching follows:', followErr)
+      const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
+      const authorIds = [...new Set([userId, ...followingIds])]
+      const { data: rows, error } = await supabase
+        .from('posts')
+        .select('*')
+        .in('user_id', authorIds)
+        .order('created_at', { ascending: false })
+      if (error) console.error('Error fetching feed:', error)
+      const list = rows || []
+      const { data: profs } = await supabase.from('profiles').select('id, username').in('id', authorIds)
+      const map: Record<string, string> = {}
+      for (const p of profs || []) map[p.id] = p.username
+      setAuthorUsernames(map)
+      setPosts(list)
+      await hydrateEngagement(userId, list)
+    },
+    [hydrateEngagement],
+  )
+
+  async function fetchFeed() {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser()
+    if (!u) return
+    await fetchFeedForUser(u.id)
+  }
+
+  async function toggleLike(postId: string) {
+    if (!user?.id) return
+    const liked = likedPostIds.has(postId)
+    if (liked) {
+      const { error } = await supabase.from('post_likes').delete().eq('user_id', user.id).eq('post_id', postId)
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setLikedPostIds((prev) => {
+        const n = new Set(prev)
+        n.delete(postId)
+        return n
+      })
+      setLikeCounts((prev) => ({ ...prev, [postId]: Math.max(0, (prev[postId] || 1) - 1) }))
+    } else {
+      const { error } = await supabase.from('post_likes').insert({ user_id: user.id, post_id: postId })
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setLikedPostIds((prev) => new Set(prev).add(postId))
+      setLikeCounts((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }))
+    }
+  }
+
+  async function confirmRething() {
+    if (!user || !rethingSource) return
+    setRethingBusy(true)
+    const origAuthor =
+      (rethingSource.rething_from_username && rethingSource.rething_from_username.trim()) ||
+      (rethingSource.user_id ? authorUsernames[rethingSource.user_id] : '') ||
+      'someone'
+    const metadata =
+      rethingSource.metadata && typeof rethingSource.metadata === 'object' ? { ...rethingSource.metadata } : {}
+    const { error } = await supabase.from('posts').insert({
+      user_id: user.id,
+      type: rethingSource.type,
+      content: rethingSource.content,
+      caption: stripHtml(rethingCaption).length ? rethingCaption.trim() : null,
+      metadata,
+      rething_of_post_id: rethingSource.id,
+      rething_from_username: origAuthor,
+    })
+    if (error) alert(`Could not rething: ${error.message}`)
+    else {
+      setRethingSource(null)
+      setRethingCaption('')
+      await fetchFeed()
+    }
+    setRethingBusy(false)
   }
 
   useEffect(() => {
@@ -491,24 +339,35 @@ export default function Home() {
       if (user) loadProfile(user.id)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null
       setUser(currentUser)
       if (currentUser) loadProfile(currentUser.id)
       if (!currentUser) {
         setProfile(null)
         setNeedsUsername(false)
+        setPosts([])
+        setAuthorUsernames({})
+        setLikeCounts({})
+        setLikedPostIds(new Set())
       }
     })
 
-    const loadInitialPosts = async () => {
-      const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false })
-      if (error) console.error('Error fetching posts:', error)
-      if (data) setPosts(data)
-    }
-    void loadInitialPosts()
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setPosts([])
+      setAuthorUsernames({})
+      setLikeCounts({})
+      setLikedPostIds(new Set())
+      return
+    }
+    void fetchFeedForUser(user.id)
+  }, [user?.id, fetchFeedForUser])
 
   function resetComposer() {
     setTextContent('')
@@ -623,6 +482,18 @@ export default function Home() {
   }, [deleteConfirmPost, deleteLoading])
 
   useEffect(() => {
+    if (!rethingSource) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !rethingBusy) {
+        setRethingSource(null)
+        setRethingCaption('')
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [rethingSource, rethingBusy])
+
+  useEffect(() => {
     if (panel !== 'image') return
     const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items
@@ -696,7 +567,7 @@ export default function Home() {
     if (error) alert(`Error creating post: ${error.message}`)
     else {
       resetComposer()
-      fetchPosts()
+      fetchFeed()
     }
     setLoading(false)
   }
@@ -776,7 +647,7 @@ export default function Home() {
       )
     } else {
       cancelEditing()
-      await fetchPosts()
+      await fetchFeed()
     }
     setEditingLoading(false)
   }
@@ -799,7 +670,7 @@ export default function Home() {
     } else {
       if (editingPostId === deleteConfirmPost.id) cancelEditing()
       setDeleteConfirmPost(null)
-      await fetchPosts()
+      await fetchFeed()
     }
     setDeleteLoading(false)
   }
@@ -810,6 +681,63 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
+      {rethingSource ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => {
+            if (!rethingBusy) {
+              setRethingSource(null)
+              setRethingCaption('')
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rething-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="rething-title" className="text-lg font-medium text-zinc-900">
+              Rething to your page
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              This will appear on your profile and in your followers&apos; feeds. The original poster stays credited.
+            </p>
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-zinc-400">Your note (optional)</label>
+            <textarea
+              value={rethingCaption}
+              onChange={(e) => setRethingCaption(e.target.value)}
+              rows={3}
+              className="mt-1.5 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm text-zinc-800 focus:border-zinc-400 focus:outline-none"
+              placeholder="Why are you rethinging this?"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={rethingBusy}
+                onClick={() => {
+                  setRethingSource(null)
+                  setRethingCaption('')
+                }}
+                className="rounded-full px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={rethingBusy}
+                onClick={() => void confirmRething()}
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {rethingBusy ? 'Posting…' : 'Rething'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {deleteConfirmPost ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
@@ -854,7 +782,11 @@ export default function Home() {
           <h1 className="text-3xl font-light tracking-tight text-zinc-900">Things I Like</h1>
           {user ? (
             <div className="flex items-center gap-3">
-              {profile ? <span className="text-sm text-zinc-500">@{profile.username}</span> : null}
+              {profile ? (
+                <Link href={`/${profile.username}`} className="text-sm text-zinc-500 hover:text-zinc-800 hover:underline">
+                  @{profile.username}
+                </Link>
+              ) : null}
               <button onClick={signOut} className="text-sm text-zinc-400 hover:text-zinc-700">Sign out</button>
             </div>
           ) : (
@@ -1146,12 +1078,23 @@ export default function Home() {
         ) : null}
 
         <section className="space-y-6">
-          {posts.length === 0 ? <p className="py-12 text-center text-zinc-400">No posts yet. Share something you like.</p> : null}
+          {!user ? (
+            <p className="py-12 text-center text-zinc-400">Sign in to see posts from people you follow.</p>
+          ) : posts.length === 0 ? (
+            <p className="py-12 text-center text-zinc-400">No posts yet. Follow someone or share something you like.</p>
+          ) : null}
           {posts.map((post) => (
             <div key={post.id}>
               <PostCard
                 post={post}
                 isOwner={user?.id === post.user_id}
+                authorUsername={post.user_id ? authorUsernames[post.user_id] : null}
+                showAuthor={!!user}
+                dashboardActions={!!user}
+                likeCount={likeCounts[post.id] ?? 0}
+                liked={likedPostIds.has(post.id)}
+                onLike={user?.id && post.user_id !== user.id ? () => void toggleLike(post.id) : undefined}
+                onRething={user?.id && post.user_id !== user.id ? () => setRethingSource(post) : undefined}
                 menuOpen={postMenuOpenId === post.id}
                 onMenuToggle={() => setPostMenuOpenId((cur) => (cur === post.id ? null : post.id))}
                 onEditClick={() => {

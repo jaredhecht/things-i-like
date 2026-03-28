@@ -7,13 +7,17 @@ import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
 import { PostCard } from '../src/components/PostCard'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
+  getSoundCloudWidgetSrc,
   getSpotifyEmbedUrl,
   getYouTubeVideoId,
   getHostnameLabel,
   isSoundCloudUrl,
   isValidHttpUrl,
+  linkPreviewHasVisual,
   normalizeLinkUrl,
+  soleGenericArticleUrlFromTextPost,
   soleSoundCloudUrlFromTextPost,
+  soleYoutubeUrlFromTextPost,
   stripHtml,
   type LinkPreview,
   type Post,
@@ -137,6 +141,8 @@ export default function Home() {
   const [tagInput0, setTagInput0] = useState('')
   const [tagInput1, setTagInput1] = useState('')
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null)
+  const [textOnlyLinkPreview, setTextOnlyLinkPreview] = useState<LinkPreview | null>(null)
+  const [textComposerPreviewLoading, setTextComposerPreviewLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [activeEditor, setActiveEditor] = useState<EditorTarget | null>(null)
   const [formatState, setFormatState] = useState({ bold: false, italic: false })
@@ -533,7 +539,21 @@ export default function Home() {
     setPanel(null)
     setActiveEditor(null)
     setLinkPreview(null)
+    setTextOnlyLinkPreview(null)
   }
+
+  const textSoleSc = useMemo(
+    () => (panel === 'text' ? soleSoundCloudUrlFromTextPost(textContent) : null),
+    [panel, textContent],
+  )
+  const textSoleYt = useMemo(
+    () => (panel === 'text' ? soleYoutubeUrlFromTextPost(textContent) : null),
+    [panel, textContent],
+  )
+  const textSoleArticle = useMemo(
+    () => (panel === 'text' ? soleGenericArticleUrlFromTextPost(textContent) : null),
+    [panel, textContent],
+  )
 
   const canPost = useMemo(() => {
     if (!panel) return false
@@ -672,9 +692,36 @@ export default function Home() {
     if (panel === 'text') {
       const trimmed = textContent.trim()
       const soleSc = soleSoundCloudUrlFromTextPost(trimmed)
+      const soleYt = soleYoutubeUrlFromTextPost(trimmed)
+      const soleArticle = soleGenericArticleUrlFromTextPost(trimmed)
       if (soleSc) {
         type = 'soundcloud'
         content = soleSc
+      } else if (soleYt) {
+        type = 'youtube'
+        content = soleYt
+      } else if (soleArticle) {
+        type = 'article'
+        content = soleArticle
+        const sameUrl = (a: string, b: string) => {
+          try {
+            return new URL(normalizeLinkUrl(a)).href === new URL(normalizeLinkUrl(b)).href
+          } catch {
+            return a === b
+          }
+        }
+        const cached =
+          textOnlyLinkPreview &&
+          textOnlyLinkPreview.url &&
+          sameUrl(textOnlyLinkPreview.url, soleArticle) &&
+          linkPreviewHasVisual(textOnlyLinkPreview)
+            ? textOnlyLinkPreview
+            : null
+        if (cached) metadata.link_preview = cached
+        else {
+          const preview = await fetchLinkPreviewRaw(soleArticle)
+          if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
+        }
       } else {
         type = 'text'
         content = trimmed
@@ -719,8 +766,8 @@ export default function Home() {
     }
 
     if (isValidHttpUrl(content) && !metadata.link_preview && type !== 'soundcloud') {
-      const preview = await fetchLinkPreview(content)
-      if (preview?.title) metadata.link_preview = preview
+      const preview = await fetchLinkPreviewRaw(content)
+      if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
     }
 
     const tagList = tagsFromComposerInputs(tagInput0, tagInput1)
@@ -741,28 +788,95 @@ export default function Home() {
     setLoading(false)
   }
 
-  async function fetchLinkPreview(url: string): Promise<LinkPreview | null> {
+  async function fetchLinkPreviewRaw(url: string): Promise<LinkPreview | null> {
     if (!isValidHttpUrl(url)) return null
     try {
-      setPreviewLoading(true)
       const response = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
       if (!response.ok) return null
       const data = await response.json()
-      const preview: LinkPreview = {
+      return {
         url: typeof data.url === 'string' ? data.url : url,
         siteName: typeof data.siteName === 'string' ? data.siteName : '',
         title: typeof data.title === 'string' ? data.title : '',
         description: typeof data.description === 'string' ? data.description : '',
         image: typeof data.image === 'string' ? data.image : '',
       }
-      setLinkPreview(preview)
-      return preview
     } catch {
       return null
+    }
+  }
+
+  async function fetchLinkPreview(url: string): Promise<LinkPreview | null> {
+    if (!isValidHttpUrl(url)) {
+      setLinkPreview(null)
+      return null
+    }
+    setPreviewLoading(true)
+    try {
+      const preview = await fetchLinkPreviewRaw(url)
+      setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
+      return preview
     } finally {
       setPreviewLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (linkTab !== 'article') setLinkPreview(null)
+  }, [linkTab])
+
+  useEffect(() => {
+    if (panel !== 'link' || linkTab !== 'article') return
+    if (!isValidHttpUrl(articleUrl)) {
+      setLinkPreview(null)
+      return
+    }
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      void (async () => {
+        setPreviewLoading(true)
+        try {
+          const preview = await fetchLinkPreviewRaw(articleUrl.trim())
+          if (!cancelled) setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
+        } finally {
+          if (!cancelled) setPreviewLoading(false)
+        }
+      })()
+    }, 450)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+      setPreviewLoading(false)
+    }
+  }, [articleUrl, panel, linkTab])
+
+  useEffect(() => {
+    if (panel !== 'text') {
+      setTextOnlyLinkPreview(null)
+      return
+    }
+    if (!textSoleArticle || !isValidHttpUrl(textSoleArticle)) {
+      setTextOnlyLinkPreview(null)
+      return
+    }
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      void (async () => {
+        setTextComposerPreviewLoading(true)
+        try {
+          const preview = await fetchLinkPreviewRaw(textSoleArticle)
+          if (!cancelled) setTextOnlyLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
+        } finally {
+          if (!cancelled) setTextComposerPreviewLoading(false)
+        }
+      })()
+    }, 450)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+      setTextComposerPreviewLoading(false)
+    }
+  }, [panel, textSoleArticle])
 
   async function startEditing(post: Post) {
     setEditingPostId(post.id)
@@ -803,8 +917,8 @@ export default function Home() {
     }
 
     if (post.type === 'article' && isValidHttpUrl(updates.content)) {
-      const preview = await fetchLinkPreview(updates.content)
-      if (preview?.title) {
+      const preview = await fetchLinkPreviewRaw(updates.content)
+      if (preview && linkPreviewHasVisual(preview)) {
         updates.metadata = {
           ...(post.metadata || {}),
           link_preview: preview,
@@ -1137,11 +1251,75 @@ export default function Home() {
                   ) : null}
 
                   {panel === 'video' ? (
-                    <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="Paste video URL (YouTube or direct link)..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
+                    <>
+                      <input
+                        type="url"
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        placeholder="Paste video URL (YouTube or direct link)..."
+                        className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                      />
+                      {getYouTubeVideoId(videoUrl) ? (
+                        <div
+                          className="relative mt-3 w-full overflow-hidden rounded-md border border-zinc-200 bg-black"
+                          style={{ paddingBottom: '56.25%' }}
+                        >
+                          <iframe
+                            title="YouTube preview"
+                            src={`https://www.youtube.com/embed/${getYouTubeVideoId(videoUrl)}`}
+                            className="absolute left-0 top-0 h-full w-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
 
                   {panel === 'audio' ? (
-                    <input type="url" value={audioUrl} onChange={(e) => setAudioUrl(e.target.value)} placeholder="Paste Spotify or SoundCloud URL..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
+                    <>
+                      <input
+                        type="url"
+                        value={audioUrl}
+                        onChange={(e) => setAudioUrl(e.target.value)}
+                        placeholder="Paste Spotify or SoundCloud URL..."
+                        className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                      />
+                      {(() => {
+                        const c = normalizeLinkUrl(audioUrl.trim())
+                        if (!c) return null
+                        const sc = getSoundCloudWidgetSrc(c)
+                        if (sc) {
+                          return (
+                            <div className="mt-3 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+                              <iframe
+                                title="SoundCloud preview"
+                                src={sc}
+                                width="100%"
+                                height={260}
+                                className="block w-full border-0"
+                                allow="autoplay"
+                              />
+                            </div>
+                          )
+                        }
+                        const sp = getSpotifyEmbedUrl(c)
+                        if (sp) {
+                          return (
+                            <iframe
+                              title="Spotify preview"
+                              src={sp}
+                              width="100%"
+                              height={152}
+                              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                              loading="lazy"
+                              className="mt-3 rounded-md border border-zinc-200"
+                            />
+                          )
+                        }
+                        return null
+                      })()}
+                    </>
                   ) : null}
 
                   {panel === 'text' ? (
@@ -1164,6 +1342,64 @@ export default function Home() {
                         maxPlainTextLength={500}
                         onProfilePathNavigate={(p) => router.push(p)}
                       />
+                      {textSoleYt && getYouTubeVideoId(textSoleYt) ? (
+                        <div
+                          className="relative mt-3 w-full overflow-hidden rounded-md bg-black"
+                          style={{ paddingBottom: '56.25%' }}
+                        >
+                          <iframe
+                            title="YouTube preview"
+                            src={`https://www.youtube.com/embed/${getYouTubeVideoId(textSoleYt)}`}
+                            className="absolute left-0 top-0 h-full w-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      ) : null}
+                      {textSoleSc && getSoundCloudWidgetSrc(textSoleSc) ? (
+                        <div className="mt-3 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+                          <iframe
+                            title="SoundCloud preview"
+                            src={getSoundCloudWidgetSrc(textSoleSc) || ''}
+                            width="100%"
+                            height={260}
+                            className="block w-full border-0"
+                            allow="autoplay"
+                          />
+                        </div>
+                      ) : null}
+                      {textComposerPreviewLoading && textSoleArticle ? (
+                        <div className="mt-3 h-28 animate-pulse rounded-md bg-zinc-100" aria-hidden />
+                      ) : null}
+                      {(() => {
+                        const tlp = textOnlyLinkPreview
+                        if (!textSoleArticle || !tlp || !linkPreviewHasVisual(tlp)) return null
+                        return (
+                        <div className="mt-3 overflow-hidden rounded-md border border-zinc-200">
+                          {tlp.image ? (
+                            <img src={tlp.image} alt={tlp.title || ''} className="h-36 w-full object-cover" />
+                          ) : null}
+                          <div className="p-3">
+                            <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                              {tlp.siteName || getHostnameLabel(textSoleArticle)}
+                            </p>
+                            <p className="text-sm font-semibold text-zinc-900">
+                              {tlp.title?.trim() || getHostnameLabel(textSoleArticle)}
+                            </p>
+                            {tlp.description ? (
+                              <p className="line-clamp-2 text-xs text-zinc-500">{tlp.description}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                        )
+                      })()}
+                      {!textComposerPreviewLoading &&
+                      textSoleArticle &&
+                      !linkPreviewHasVisual(textOnlyLinkPreview) ? (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          No preview for this URL—the post will still save as a rich link card when it&apos;s only this link.
+                        </p>
+                      ) : null}
                     </>
                   ) : null}
 
@@ -1199,27 +1435,92 @@ export default function Home() {
                             <input type="url" value={articleUrl} onChange={(e) => setArticleUrl(e.target.value)} placeholder="Article or SoundCloud URL…" className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" />
                             <button
                               type="button"
-                              onClick={() => fetchLinkPreview(articleUrl)}
+                              onClick={() => void fetchLinkPreview(articleUrl)}
                               disabled={!isValidHttpUrl(articleUrl) || previewLoading}
                               className="rounded-[4px] border border-[#dbdbdb] px-3 py-2 text-xs font-semibold text-zinc-700 disabled:opacity-50"
                             >
-                              {previewLoading ? 'Fetching...' : 'Fetch'}
+                              {previewLoading ? '…' : 'Refresh'}
                             </button>
                           </div>
-                          {linkPreview?.title ? (
+                          {(() => {
+                            const lp = linkPreview
+                            if (!lp || !linkPreviewHasVisual(lp)) return null
+                            return (
                             <div className="mt-3 overflow-hidden rounded-md border border-zinc-200">
-                              {linkPreview.image ? <img src={linkPreview.image} alt={linkPreview.title} className="h-36 w-full object-cover" /> : null}
+                              {lp.image ? (
+                                <img src={lp.image} alt={lp.title || ''} className="h-36 w-full object-cover" />
+                              ) : null}
                               <div className="p-3">
-                                <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">{linkPreview.siteName || getHostnameLabel(articleUrl)}</p>
-                                <p className="text-sm font-semibold text-zinc-900">{linkPreview.title}</p>
-                                {linkPreview.description ? <p className="line-clamp-2 text-xs text-zinc-500">{linkPreview.description}</p> : null}
+                                <p className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">
+                                  {lp.siteName || getHostnameLabel(articleUrl)}
+                                </p>
+                                <p className="text-sm font-semibold text-zinc-900">
+                                  {lp.title?.trim() || getHostnameLabel(articleUrl)}
+                                </p>
+                                {lp.description ? (
+                                  <p className="line-clamp-2 text-xs text-zinc-500">{lp.description}</p>
+                                ) : null}
                               </div>
+                            </div>
+                            )
+                          })()}
+                          {previewLoading && isValidHttpUrl(articleUrl) ? (
+                            <div className="mt-3 h-28 animate-pulse rounded-md bg-zinc-100" aria-hidden />
+                          ) : null}
+                          {!previewLoading && isValidHttpUrl(articleUrl) && !linkPreviewHasVisual(linkPreview) ? (
+                            <p className="mt-2 text-xs text-zinc-500">
+                              No preview for this URL—the post will still save as a link.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {linkTab === 'spotify' ? (
+                        <>
+                          <input
+                            type="url"
+                            value={spotifyUrl}
+                            onChange={(e) => setSpotifyUrl(e.target.value)}
+                            placeholder="Paste Spotify URL..."
+                            className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                          />
+                          {getSpotifyEmbedUrl(spotifyUrl) ? (
+                            <iframe
+                              title="Spotify preview"
+                              src={getSpotifyEmbedUrl(spotifyUrl) || ''}
+                              width="100%"
+                              height={152}
+                              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                              loading="lazy"
+                              className="mt-3 rounded-md border border-zinc-200"
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
+                      {linkTab === 'youtube' ? (
+                        <>
+                          <input
+                            type="url"
+                            value={youtubeUrl}
+                            onChange={(e) => setYoutubeUrl(e.target.value)}
+                            placeholder="Paste YouTube URL..."
+                            className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                          />
+                          {getYouTubeVideoId(youtubeUrl) ? (
+                            <div
+                              className="relative mt-3 w-full overflow-hidden rounded-md border border-zinc-200 bg-black"
+                              style={{ paddingBottom: '56.25%' }}
+                            >
+                              <iframe
+                                title="YouTube preview"
+                                src={`https://www.youtube.com/embed/${getYouTubeVideoId(youtubeUrl)}`}
+                                className="absolute left-0 top-0 h-full w-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
                             </div>
                           ) : null}
                         </>
                       ) : null}
-                      {linkTab === 'spotify' ? <input type="url" value={spotifyUrl} onChange={(e) => setSpotifyUrl(e.target.value)} placeholder="Paste Spotify URL..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" /> : null}
-                      {linkTab === 'youtube' ? <input type="url" value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="Paste YouTube URL..." className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none" /> : null}
                     </>
                   ) : null}
                 </div>

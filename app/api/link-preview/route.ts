@@ -50,10 +50,14 @@ export async function GET(request: Request) {
 
   try {
     const response = await fetch(parsedUrl.toString(), {
+      redirect: 'follow',
       headers: {
-        'user-agent': 'Mozilla/5.0 (compatible; ThingsILikeBot/1.0)',
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(12_000),
     })
 
     if (!response.ok) {
@@ -64,7 +68,12 @@ export async function GET(request: Request) {
     const siteName = pickMeta(html, 'og:site_name') || parsedUrl.hostname.replace('www.', '')
     const title = pickMeta(html, 'og:title') || pickMeta(html, 'twitter:title') || pickTitle(html)
     const description = pickMeta(html, 'og:description') || pickMeta(html, 'twitter:description') || pickMeta(html, 'description')
-    const image = absolutize(parsedUrl.toString(), pickMeta(html, 'og:image') || pickMeta(html, 'twitter:image'))
+    const imageRaw =
+      pickMeta(html, 'og:image:secure_url') ||
+      pickMeta(html, 'og:image') ||
+      pickMeta(html, 'twitter:image') ||
+      pickMeta(html, 'twitter:image:src')
+    const image = absolutize(parsedUrl.toString(), imageRaw)
 
     const preview: LinkPreview = {
       url: parsedUrl.toString(),

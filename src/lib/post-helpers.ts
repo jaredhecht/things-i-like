@@ -20,6 +20,13 @@ export type LinkPreview = {
   image: string
 }
 
+export function linkPreviewHasVisual(p: LinkPreview | null | undefined): boolean {
+  if (!p) return false
+  return Boolean(
+    (p.title && p.title.trim()) || (p.description && p.description.trim()) || (p.image && p.image.trim()),
+  )
+}
+
 export function getSpotifyEmbedUrl(url: string): string | null {
   const match = url.match(/open\.spotify\.com\/(track|album|playlist)\/([a-zA-Z0-9]+)/)
   return match ? `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0` : null
@@ -107,6 +114,36 @@ export function extractFirstSoundCloudUrl(html: string): string | null {
     }
   }
   return null
+}
+
+/** Single empty `<a>` or plain text that is one URL only (no other words). */
+function soleUrlFromTextPost(html: string): string | null {
+  const t = html.trim()
+  const singleEmptyAnchor = /^<a\s+[^>]*href="([^"]+)"[^>]*>\s*<\/a>$/i.exec(t.replace(/\s+/g, ' '))
+  if (singleEmptyAnchor?.[1]) return normalizeLinkUrl(singleEmptyAnchor[1])
+  const plain = stripHtml(t).trim()
+  if (!plain || plain.includes(' ')) return null
+  if (!/^https?:\/\//i.test(plain)) return null
+  return normalizeLinkUrl(plain)
+}
+
+/** Text post that is only a YouTube URL → can store as `youtube` type */
+export function soleYoutubeUrlFromTextPost(html: string): string | null {
+  const raw = soleUrlFromTextPost(html)
+  if (!raw || !isValidHttpUrl(raw)) return null
+  return getYouTubeVideoId(raw) ? raw : null
+}
+
+/**
+ * Text post that is a single generic HTTP link (not SoundCloud / YouTube / Spotify) → can store as `article` type.
+ */
+export function soleGenericArticleUrlFromTextPost(html: string): string | null {
+  const raw = soleUrlFromTextPost(html)
+  if (!raw || !isValidHttpUrl(raw)) return null
+  if (isSoundCloudUrl(raw)) return null
+  if (getYouTubeVideoId(raw)) return null
+  if (/open\.spotify\.com/i.test(raw)) return null
+  return raw
 }
 
 /** Text post that is only a SoundCloud link (plain URL or a single anchor). → store as `soundcloud` type */

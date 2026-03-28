@@ -18,7 +18,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const supabase = createSupabaseServer()
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, username, display_name')
+    .select('id, username, avatar_url')
     .eq('username', slug)
     .maybeSingle()
 
@@ -70,11 +70,23 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </Link>
         </p>
         <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-light tracking-tight text-zinc-900">
-              {profile.display_name?.trim() || `@${profile.username}`}
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500">@{profile.username}</p>
+          <div className="flex min-w-0 items-center gap-4">
+            {profile.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="h-16 w-16 shrink-0 rounded-full border border-zinc-200 object-cover sm:h-[4.5rem] sm:w-[4.5rem]"
+              />
+            ) : (
+              <div
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-xl font-medium text-zinc-500 sm:h-[4.5rem] sm:w-[4.5rem] sm:text-2xl"
+                aria-hidden
+              >
+                {profile.username.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <h1 className="min-w-0 text-3xl font-light tracking-tight text-zinc-900">@{profile.username}</h1>
           </div>
           <div className="shrink-0 sm:pt-1">
             <FollowButton followingId={profile.id} profileUsername={profile.username} />

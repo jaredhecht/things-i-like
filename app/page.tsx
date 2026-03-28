@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
@@ -948,14 +947,9 @@ export default function Home() {
               hasUnreadNotifications={notifUnread}
             />
           ) : (
-            <div className="flex items-center gap-4">
-              <Link href="/whos-here" className="text-sm text-zinc-500 hover:text-zinc-800 hover:underline">
-                Who&apos;s Here?
-              </Link>
-              <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">
-                Sign in with Google
-              </button>
-            </div>
+            <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">
+              Sign in with Google
+            </button>
           )}
         </header>
 

@@ -543,8 +543,11 @@ export function PostCard({
                   </span>
                 </>
               ) : (
-                <span className="pr-1 text-xs tabular-nums text-zinc-500" aria-label={`${likeCount} likes`}>
-                  {likeCount}
+                <span className="flex items-center gap-0.5" aria-label={`${likeCount} likes`}>
+                  <span className="inline-flex rounded-full p-2 text-zinc-500" aria-hidden>
+                    <HeartIcon filled={false} className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{likeCount}</span>
                 </span>
               )
             ) : null}

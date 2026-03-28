@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic'
 type ProfileRow = {
   id: string
   username: string
-  display_name: string | null
   avatar_url: string | null
 }
 
@@ -15,7 +14,7 @@ export default async function WhosHerePage() {
   const supabase = createSupabaseServer()
   const { data: profiles, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, avatar_url')
+    .select('id, username, avatar_url')
     .order('username', { ascending: true })
 
   const list = (profiles || []) as ProfileRow[]
@@ -56,9 +55,6 @@ export default async function WhosHerePage() {
                   <Link href={`/${p.username}`} className="block truncate font-medium text-zinc-900 hover:underline">
                     @{p.username}
                   </Link>
-                  {p.display_name?.trim() ? (
-                    <p className="truncate text-xs text-zinc-500">{p.display_name.trim()}</p>
-                  ) : null}
                 </div>
                 <div className="shrink-0">
                   <FollowButton followingId={p.id} profileUsername={p.username} oauthReturnTo="/whos-here" />

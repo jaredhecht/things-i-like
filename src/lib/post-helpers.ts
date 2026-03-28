@@ -8,6 +8,8 @@ export type Post = {
   user_id: string | null
   rething_of_post_id?: string | null
   rething_from_username?: string | null
+  /** Normalized slugs, max 2 (see `post-tags.ts`). */
+  tags?: string[] | null
 }
 
 export type LinkPreview = {

@@ -17,6 +17,7 @@ import {
   type LinkPreview,
   type Post,
 } from '@/src/lib/post-helpers'
+import { parsePostTags } from '@/src/lib/post-tags'
 
 function PlainWithMentions({ text }: { text: string }) {
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
@@ -230,6 +231,9 @@ export function PostCard({
     return () => controller.abort()
   }, [liveLinkPreview?.title, post.content, post.type])
 
+  const postTags = useMemo(() => parsePostTags(post.tags), [post.tags])
+  const hasTags = postTags.length > 0
+
   const showEngagement =
     dashboardActions &&
     (bookmarksFeed
@@ -237,7 +241,7 @@ export function PostCard({
       : !isOwner && Boolean(onLike || onRething || onBookmark))
   const showProfileLikeRow = profileLikeBar && likeCount > 0
   const showProfileActions = profileLikeBar && (showProfileLikeRow || !!onBookmark)
-  const showFooterDivider = showEngagement || showProfileActions
+  const showFooterDivider = showEngagement || showProfileActions || hasTags
   const originalHandle = post.rething_from_username?.trim()
   /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
   const showAuthorHandle = Boolean(
@@ -466,6 +470,20 @@ export function PostCard({
           className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline"
           dangerouslySetInnerHTML={{ __html: htmlCaption }}
         />
+      ) : null}
+
+      {hasTags ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {postTags.map((t) => (
+            <Link
+              key={t}
+              href={`/tag/${encodeURIComponent(t)}`}
+              className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-xs font-medium text-zinc-600 hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900"
+            >
+              #{t}
+            </Link>
+          ))}
+        </div>
       ) : null}
 
       <div

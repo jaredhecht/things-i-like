@@ -19,6 +19,7 @@ import {
   type Post,
 } from '../src/lib/post-helpers'
 import { fetchAllPostsForAuthorIds } from '../src/lib/posts-batched'
+import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { supabase } from '../src/lib/supabase'
 
 type Profile = {
@@ -133,6 +134,8 @@ export default function Home() {
   const [articleUrl, setArticleUrl] = useState('')
   const [audioUrl, setAudioUrl] = useState('')
   const [caption, setCaption] = useState('')
+  const [tagInput0, setTagInput0] = useState('')
+  const [tagInput1, setTagInput1] = useState('')
   const [linkPreview, setLinkPreview] = useState<LinkPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [activeEditor, setActiveEditor] = useState<EditorTarget | null>(null)
@@ -142,6 +145,8 @@ export default function Home() {
   const [editingPostType, setEditingPostType] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [editingCaption, setEditingCaption] = useState('')
+  const [editingTag0, setEditingTag0] = useState('')
+  const [editingTag1, setEditingTag1] = useState('')
   const [editingLoading, setEditingLoading] = useState(false)
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
   const [deleteConfirmPost, setDeleteConfirmPost] = useState<Post | null>(null)
@@ -414,6 +419,7 @@ export default function Home() {
       'someone'
     const metadata =
       rethingSource.metadata && typeof rethingSource.metadata === 'object' ? { ...rethingSource.metadata } : {}
+    const rethingTags = parsePostTags(rethingSource.tags)
     const { error } = await supabase.from('posts').insert({
       user_id: user.id,
       type: rethingSource.type,
@@ -422,6 +428,7 @@ export default function Home() {
       metadata,
       rething_of_post_id: rethingSource.id,
       rething_from_username: origAuthor,
+      tags: rethingTags.length ? rethingTags : [],
     })
     if (error) alert(`Could not rething: ${error.message}`)
     else {
@@ -521,6 +528,8 @@ export default function Home() {
     setArticleUrl('')
     setAudioUrl('')
     setCaption('')
+    setTagInput0('')
+    setTagInput1('')
     setPanel(null)
     setActiveEditor(null)
     setLinkPreview(null)
@@ -714,12 +723,14 @@ export default function Home() {
       if (preview?.title) metadata.link_preview = preview
     }
 
+    const tagList = tagsFromComposerInputs(tagInput0, tagInput1)
     const { error } = await supabase.from('posts').insert({
       type,
       content,
       caption: stripHtml(caption).length ? caption.trim() : null,
       user_id: user.id,
       metadata,
+      tags: tagList,
     })
 
     if (error) alert(`Error creating post: ${error.message}`)
@@ -758,6 +769,9 @@ export default function Home() {
     setEditingPostType(post.type)
     setEditingContent(post.content || '')
     setEditingCaption(post.caption || '')
+    const t = parsePostTags(post.tags)
+    setEditingTag0(t[0] ?? '')
+    setEditingTag1(t[1] ?? '')
   }
 
   function cancelEditing() {
@@ -765,6 +779,8 @@ export default function Home() {
     setEditingPostType(null)
     setEditingContent('')
     setEditingCaption('')
+    setEditingTag0('')
+    setEditingTag1('')
   }
 
   async function saveEdit(post: Post) {
@@ -775,9 +791,15 @@ export default function Home() {
         ? (editContentEditorRef.current?.innerHTML ?? editingContent).trim()
         : editingContent.trim()
     const captionFromDom = (editCaptionEditorRef.current?.innerHTML ?? editingCaption).trim()
-    const updates: { content: string; caption: string | null; metadata?: Record<string, unknown> } = {
+    const updates: {
+      content: string
+      caption: string | null
+      metadata?: Record<string, unknown>
+      tags: string[]
+    } = {
       content: contentFromDom,
       caption: stripHtml(captionFromDom).length ? captionFromDom : null,
+      tags: tagsFromComposerInputs(editingTag0, editingTag1),
     }
 
     if (post.type === 'article' && isValidHttpUrl(updates.content)) {
@@ -1224,6 +1246,27 @@ export default function Home() {
                   </div>
                 ) : null}
 
+                <div className="border-t border-[#dbdbdb] px-3.5 py-2.5">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#8e8e8e]">Tags (optional, max 2)</p>
+                  <p className="mb-2 text-[11px] text-[#b8b8b8]">Letters, numbers, hyphens. Click a tag on a post to see more like it.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={tagInput0}
+                      onChange={(e) => setTagInput0(e.target.value)}
+                      placeholder="e.g. jazz"
+                      maxLength={40}
+                      className="min-w-[8rem] flex-1 rounded-[4px] border border-[#dbdbdb] px-3 py-2 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                    />
+                    <input
+                      value={tagInput1}
+                      onChange={(e) => setTagInput1(e.target.value)}
+                      placeholder="second tag"
+                      maxLength={40}
+                      className="min-w-[8rem] flex-1 rounded-[4px] border border-[#dbdbdb] px-3 py-2 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-2 border-t border-[#dbdbdb] px-3.5 py-2.5">
                   <p className={`mr-auto text-[11px] ${panel === 'text' && textCount > 450 ? 'text-red-400' : 'text-[#b8b8b8]'}`}>
                     {panel === 'text' ? `${textCount} / 500` : ''}
@@ -1313,6 +1356,25 @@ export default function Home() {
                       editorRef={editCaptionEditorRef}
                       onProfilePathNavigate={(p) => router.push(p)}
                     />
+                    <div className="mt-3">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Tags (max 2)</p>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          value={editingTag0}
+                          onChange={(e) => setEditingTag0(e.target.value)}
+                          placeholder="first tag"
+                          maxLength={40}
+                          className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
+                        />
+                        <input
+                          value={editingTag1}
+                          onChange={(e) => setEditingTag1(e.target.value)}
+                          placeholder="second tag"
+                          maxLength={40}
+                          className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={cancelEditing} className="text-sm text-zinc-500 hover:text-zinc-900">Cancel</button>

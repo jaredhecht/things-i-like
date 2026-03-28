@@ -42,3 +42,25 @@ export async function fetchAllPostsForAuthorIds(supabase: SupabaseClient, author
   }
   return all
 }
+
+/** Posts that include `tag` in `tags` (normalized slug). Requires `posts.tags` column + GIN index (see supabase/post-tags.sql). */
+export async function fetchAllPostsWithTag(supabase: SupabaseClient, tag: string): Promise<Post[]> {
+  const slug = tag.trim().toLowerCase()
+  if (!slug) return []
+  const all: Post[] = []
+  let offset = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .contains('tags', [slug])
+      .order('created_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data || []) as Post[]
+    all.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return all
+}

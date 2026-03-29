@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
 type NotifRow = {
@@ -99,7 +100,7 @@ export default function NotificationsPage() {
             onClick={() =>
               void supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/notifications` : undefined },
+                options: oauthSignInRedirectOptions('/notifications'),
               })
             }
             className="mt-4 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"

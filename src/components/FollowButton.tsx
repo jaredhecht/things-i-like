@@ -2,6 +2,7 @@
 
 import type { User } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
+import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
 export function FollowButton({
@@ -52,7 +53,6 @@ export function FollowButton({
 
   async function signInWithGoogle() {
     if (typeof window === 'undefined') return
-    const origin = window.location.origin
     const path = oauthReturnTo
       ? oauthReturnTo.startsWith('/')
         ? oauthReturnTo
@@ -60,7 +60,7 @@ export function FollowButton({
       : `/${profileUsername}`
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${origin}${path}` },
+      options: oauthSignInRedirectOptions(path),
     })
   }
 

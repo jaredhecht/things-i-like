@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { PostCard } from '@/src/components/PostCard'
+import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
 
@@ -171,7 +172,7 @@ export default function BookmarksPage() {
             onClick={() =>
               void supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/bookmarks` : undefined },
+                options: oauthSignInRedirectOptions('/bookmarks'),
               })
             }
             className="mt-4 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"

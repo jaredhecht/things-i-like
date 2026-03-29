@@ -23,6 +23,7 @@ import {
   type Post,
 } from '../src/lib/post-helpers'
 import { fetchAllPostsForAuthorIds } from '../src/lib/posts-batched'
+import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { supabase } from '../src/lib/supabase'
 
@@ -45,6 +46,11 @@ type EditorTarget = 'text' | 'caption' | 'editContent' | 'editCaption'
 
 const POST_IMAGES_BUCKET = 'post-images'
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024
+/** Signed-out home: at most one recent post per author, up to this many distinct authors. */
+const PUBLIC_PREVIEW_MAX_POSTS = 10
+const PUBLIC_PREVIEW_PAGE = 150
+const PUBLIC_PREVIEW_MAX_PAGES = 40
+const PROFILE_IN_CHUNK = 100
 
 function RichTextEditor({
   value,
@@ -261,7 +267,7 @@ export default function Home() {
   async function signInWithGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: oauthSignInRedirectOptions('/'),
     })
   }
 
@@ -299,34 +305,63 @@ export default function Home() {
   }, [])
 
   const loadPublicPreviewPosts = useCallback(async () => {
-    const { data: rows, error } = await supabase
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10)
-    if (error) {
-      console.error('Error loading public preview posts:', error)
+    const picked: Post[] = []
+    const seenUser = new Set<string>()
+    let offset = 0
+
+    for (let page = 0; page < PUBLIC_PREVIEW_MAX_PAGES && picked.length < PUBLIC_PREVIEW_MAX_POSTS; page++) {
+      const { data: rows, error } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PUBLIC_PREVIEW_PAGE - 1)
+      if (error) {
+        console.error('Error loading public preview posts:', error)
+        setPosts([])
+        setAuthorByUserId({})
+        return
+      }
+      const batch = (rows || []) as Post[]
+      if (batch.length === 0) break
+      for (const p of batch) {
+        const uid = p.user_id
+        if (!uid || seenUser.has(uid)) continue
+        seenUser.add(uid)
+        picked.push(p)
+        if (picked.length >= PUBLIC_PREVIEW_MAX_POSTS) break
+      }
+      if (batch.length < PUBLIC_PREVIEW_PAGE) break
+      offset += PUBLIC_PREVIEW_PAGE
+    }
+
+    const ids = [...seenUser]
+    if (ids.length === 0) {
       setPosts([])
       setAuthorByUserId({})
       return
     }
-    const list = (rows || []) as Post[]
-    const ids = [...new Set(list.map((p) => p.user_id).filter(Boolean))] as string[]
-    if (ids.length === 0) {
-      setPosts(list)
-      setAuthorByUserId({})
-      return
-    }
-    const { data: profs } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', ids)
     const map: Record<string, AuthorMeta> = {}
-    for (const p of profs || []) {
-      map[p.id] = {
-        username: p.username,
-        display_name: p.display_name,
-        avatar_url: p.avatar_url ?? null,
+    for (let i = 0; i < ids.length; i += PROFILE_IN_CHUNK) {
+      const slice = ids.slice(i, i + PROFILE_IN_CHUNK)
+      const { data: profs, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', slice)
+      if (profErr) {
+        console.error('Error loading preview author profiles:', profErr)
+        continue
+      }
+      for (const p of profs || []) {
+        const raw = p.avatar_url
+        const avatarUrl = typeof raw === 'string' ? raw.trim() || null : raw ?? null
+        map[p.id] = {
+          username: p.username,
+          display_name: p.display_name,
+          avatar_url: avatarUrl,
+        }
       }
     }
-    setPosts(list)
+    setPosts(picked)
     setAuthorByUserId(map)
   }, [])
 

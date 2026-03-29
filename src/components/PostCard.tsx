@@ -252,6 +252,7 @@ export function PostCard({
     <img
       src={authorAvatarUrl}
       alt=""
+      referrerPolicy="no-referrer"
       className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 object-cover"
     />
   ) : (

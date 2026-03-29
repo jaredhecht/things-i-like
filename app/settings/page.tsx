@@ -4,16 +4,80 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
+import { ElsewhereSettingsSection } from '@/src/components/ElsewhereSettingsSection'
+import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
 const POST_IMAGES_BUCKET = 'post-images'
-const AVATAR_MAX_BYTES = 4 * 1024 * 1024
+const BIO_MAX = 160
+/** After resize, uploads must be under this (matches post image cap). */
+const AVATAR_MAX_BYTES = 8 * 1024 * 1024
+const AVATAR_MAX_DIMENSION = 1200
+
+function extFromFile(f: File): string {
+  if (f.type === 'image/jpeg' || f.type === 'image/jpg') return 'jpg'
+  if (f.type === 'image/png') return 'png'
+  if (f.type === 'image/webp') return 'webp'
+  if (f.type === 'image/gif') return 'gif'
+  const p = f.name.split('.').pop()
+  const cleaned = p?.replace(/[^a-z0-9]/gi, '').slice(0, 8)
+  return cleaned || 'jpg'
+}
+
+/** Shrink large photos (e.g. phone camera) in the browser so upload stays under maxBytes. */
+async function shrinkImageFileForAvatar(file: File, maxBytes: number): Promise<File> {
+  if (file.size <= maxBytes) return file
+  if (!file.type.startsWith('image/')) return file
+
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    throw new Error(
+      'This image could not be opened in the browser. Try picking a JPEG/PNG, or use your phone’s editor to export a smaller copy.',
+    )
+  }
+
+  const origW = bitmap.width
+  const origH = bitmap.height
+  let maxDim = AVATAR_MAX_DIMENSION
+  let quality = 0.88
+
+  try {
+    for (let i = 0; i < 12; i++) {
+      const scale = Math.min(1, maxDim / Math.max(origW, origH))
+      const w = Math.max(1, Math.round(origW * scale))
+      const h = Math.max(1, Math.round(origH * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) break
+      ctx.drawImage(bitmap, 0, 0, w, h)
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', quality)
+      })
+      if (!blob) break
+      if (blob.size <= maxBytes) {
+        return new File([blob], 'avatar.jpg', { type: 'image/jpeg', lastModified: Date.now() })
+      }
+      quality -= 0.07
+      maxDim = Math.round(maxDim * 0.82)
+      if (quality < 0.35) break
+    }
+    throw new Error('Photo is still too large after resizing. Try another image or crop it in your Photos app first.')
+  } finally {
+    bitmap.close()
+  }
+}
 
 type Profile = {
   id: string
   username: string
   display_name: string | null
   avatar_url: string | null
+  bio: string | null
+  elsewhere_visible?: boolean | null
 }
 
 export default function SettingsPage() {
@@ -24,6 +88,8 @@ export default function SettingsPage() {
   const [uploading, setUploading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [bioDraft, setBioDraft] = useState('')
+  const [bioSaving, setBioSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -36,7 +102,11 @@ export default function SettingsPage() {
       setLoading(false)
       return
     }
-    const { data } = await supabase.from('profiles').select('id, username, display_name, avatar_url').eq('id', u.id).maybeSingle()
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar_url, bio, elsewhere_visible')
+      .eq('id', u.id)
+      .maybeSingle()
     setProfile(data as Profile | null)
     setLoading(false)
   }, [])
@@ -53,24 +123,48 @@ export default function SettingsPage() {
     return () => subscription.unsubscribe()
   }, [load])
 
+  useEffect(() => {
+    if (profile) setBioDraft(profile.bio ?? '')
+  }, [profile?.id, profile?.bio])
+
+  async function saveBio() {
+    if (!user?.id) return
+    const trimmed = bioDraft.trim().slice(0, BIO_MAX)
+    setBioSaving(true)
+    const { error } = await supabase.from('profiles').update({ bio: trimmed || null }).eq('id', user.id)
+    if (error) {
+      alert(`Could not save bio: ${error.message}`)
+      setBioSaving(false)
+      return
+    }
+    await load()
+    setBioSaving(false)
+  }
+
   async function uploadAvatar(file: File) {
     if (!user?.id) return
     if (!file.type.startsWith('image/')) {
       alert('Choose an image file.')
       return
     }
-    if (file.size > AVATAR_MAX_BYTES) {
-      alert('Image must be 4 MB or smaller.')
+    let toUpload: File
+    try {
+      toUpload = await shrinkImageFileForAvatar(file, AVATAR_MAX_BYTES)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Could not process this image.')
+      return
+    }
+    if (toUpload.size > AVATAR_MAX_BYTES) {
+      alert(`Image must end up at ${AVATAR_MAX_BYTES / (1024 * 1024)} MB or smaller after processing.`)
       return
     }
     setUploading(true)
-    const rawExt = file.name.split('.').pop() || 'jpg'
-    const ext = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'jpg'
+    const ext = extFromFile(toUpload)
     const path = `${user.id}/avatar/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-    const { error: upErr } = await supabase.storage.from(POST_IMAGES_BUCKET).upload(path, file, {
+    const { error: upErr } = await supabase.storage.from(POST_IMAGES_BUCKET).upload(path, toUpload, {
       cacheControl: '3600',
       upsert: false,
-      contentType: file.type || 'image/jpeg',
+      contentType: toUpload.type || 'image/jpeg',
     })
     if (upErr) {
       alert(
@@ -149,7 +243,7 @@ export default function SettingsPage() {
             onClick={() =>
               void supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/settings` : undefined },
+                options: oauthSignInRedirectOptions('/settings'),
               })
             }
             className="mt-4 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
@@ -214,7 +308,10 @@ export default function SettingsPage() {
 
         <section className="mb-10 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-zinc-900">Profile photo</h2>
-          <p className="mt-1 text-sm text-zinc-500">Shown on your posts and on Who&apos;s Here.</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            Shown on your profile, posts, and Who&apos;s Here. Large phone photos are resized automatically (max{' '}
+            {AVATAR_MAX_BYTES / (1024 * 1024)}&nbsp;MB).
+          </p>
           <div className="mt-4 flex items-center gap-4">
             {preview ? (
               <img src={preview} alt="" className="h-16 w-16 rounded-full border border-zinc-200 object-cover" />
@@ -245,6 +342,45 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        <section className="mb-10 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-900">Bio</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            A short line about you. Shown on your public profile under your username (max {BIO_MAX} characters).
+          </p>
+          <textarea
+            value={bioDraft}
+            onChange={(e) => setBioDraft(e.target.value.slice(0, BIO_MAX))}
+            maxLength={BIO_MAX}
+            rows={3}
+            placeholder="Optional"
+            className="mt-3 w-full resize-y rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-zinc-400">
+              {bioDraft.length}/{BIO_MAX}
+            </span>
+            <button
+              type="button"
+              disabled={bioSaving}
+              onClick={() => void saveBio()}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {bioSaving ? 'Saving…' : 'Save bio'}
+            </button>
+          </div>
+        </section>
+
+        {profile ? (
+          <ElsewhereSettingsSection
+            userId={user.id}
+            elsewhereVisible={profile.elsewhere_visible === true}
+            onElsewhereVisibleChange={(v) =>
+              setProfile((p) => (p ? { ...p, elsewhere_visible: v } : p))
+            }
+            onRefreshProfile={load}
+          />
+        ) : null}
 
         <section className="rounded-lg border border-red-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-red-900">Danger zone</h2>

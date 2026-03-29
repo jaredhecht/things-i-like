@@ -126,6 +126,7 @@ export function PostCard({
   onMenuToggle,
   onEditClick,
   onDeleteClick,
+  onModulesClick,
 }: {
   post: Post
   isOwner?: boolean
@@ -146,6 +147,7 @@ export function PostCard({
   onMenuToggle?: () => void
   onEditClick?: () => void
   onDeleteClick?: () => void
+  onModulesClick?: () => void
 }) {
   const router = useRouter()
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -286,7 +288,7 @@ export function PostCard({
               ) : null}
             </Link>
           ) : null}
-          {isOwner ? (
+          {isOwner && (onEditClick || onDeleteClick || onModulesClick) ? (
             <div className="relative shrink-0" data-post-menu-root>
               <button
                 type="button"
@@ -310,22 +312,36 @@ export function PostCard({
                   className="absolute right-0 top-full z-10 mt-0.5 min-w-[148px] rounded-md border border-zinc-200 bg-white py-1 shadow-lg"
                   role="menu"
                 >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                    onClick={() => onEditClick?.()}
-                  >
-                    Edit post
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                    onClick={() => onDeleteClick?.()}
-                  >
-                    Delete post
-                  </button>
+                  {onEditClick ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => onEditClick()}
+                    >
+                      Edit post
+                    </button>
+                  ) : null}
+                  {onDeleteClick ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                      onClick={() => onDeleteClick()}
+                    >
+                      Delete post
+                    </button>
+                  ) : null}
+                  {onModulesClick ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                      onClick={() => onModulesClick()}
+                    >
+                      Modules…
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>

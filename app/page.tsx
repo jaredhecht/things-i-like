@@ -1,10 +1,13 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
+import { ComposerModuleChips } from '../src/components/ComposerModuleChips'
+import { InlinePostEditor } from '../src/components/InlinePostEditor'
 import { PostCard } from '../src/components/PostCard'
+import { RichTextEditor } from '../src/components/RichTextEditor'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
   getSoundCloudWidgetSrc,
@@ -23,6 +26,10 @@ import {
   type Post,
 } from '../src/lib/post-helpers'
 import { fetchAllPostsForAuthorIds } from '../src/lib/posts-batched'
+import { PostModulesSheet } from '../src/components/PostModulesSheet'
+import { classifyPostAfterSave } from '../src/lib/modules-ui'
+import type { ProfileModuleRow } from '../src/lib/modules-ui'
+import { fetchLinkPreviewClient } from '../src/lib/link-preview-client'
 import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { supabase } from '../src/lib/supabase'
@@ -32,6 +39,7 @@ type Profile = {
   username: string
   display_name: string | null
   avatar_url?: string | null
+  modules_ai_enabled?: boolean | null
 }
 
 type AuthorMeta = {
@@ -42,7 +50,7 @@ type AuthorMeta = {
 
 type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
 type LinkTab = 'article' | 'spotify' | 'youtube'
-type EditorTarget = 'text' | 'caption' | 'editContent' | 'editCaption'
+type EditorTarget = 'text' | 'caption'
 
 const POST_IMAGES_BUCKET = 'post-images'
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024
@@ -51,76 +59,6 @@ const PUBLIC_PREVIEW_MAX_POSTS = 10
 const PUBLIC_PREVIEW_PAGE = 150
 const PUBLIC_PREVIEW_MAX_PAGES = 40
 const PROFILE_IN_CHUNK = 100
-
-function RichTextEditor({
-  value,
-  onChange,
-  onFocus,
-  placeholder,
-  className,
-  editorRef,
-  maxPlainTextLength,
-  onProfilePathNavigate,
-}: {
-  value: string
-  onChange: (html: string) => void
-  onFocus: () => void
-  placeholder: string
-  className: string
-  editorRef: RefObject<HTMLDivElement | null>
-  maxPlainTextLength?: number
-  onProfilePathNavigate?: (path: string) => void
-}) {
-  useEffect(() => {
-    if (!editorRef.current) return
-    const isFocused = document.activeElement === editorRef.current
-    if (!isFocused && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value
-    }
-  }, [editorRef, value])
-
-  return (
-    <div className="relative">
-      {stripHtml(value).length === 0 ? <div className="pointer-events-none absolute left-0 top-0 text-sm text-[#b8b8b8]">{placeholder}</div> : null}
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        className={className}
-        onFocus={onFocus}
-        onClick={(e) => {
-          const t = e.target as HTMLElement | null
-          if (t?.closest('a')) {
-            const a = t.closest('a') as HTMLAnchorElement
-            const href = a.getAttribute('href')
-            if (href) {
-              if (/^\/[a-zA-Z0-9_]+$/.test(href)) {
-                e.preventDefault()
-                onProfilePathNavigate?.(href)
-                return
-              }
-              e.preventDefault()
-              try {
-                const url = new URL(href, window.location.href)
-                window.open(url.href, '_blank', 'noopener,noreferrer')
-              } catch {
-                window.open(normalizeLinkUrl(href), '_blank', 'noopener,noreferrer')
-              }
-            }
-          }
-        }}
-        onInput={(e) => {
-          const nextHtml = e.currentTarget.innerHTML
-          if (maxPlainTextLength && stripHtml(nextHtml).length > maxPlainTextLength) {
-            e.currentTarget.innerHTML = value
-            return
-          }
-          onChange(nextHtml)
-        }}
-      />
-    </div>
-  )
-}
 
 export default function Home() {
   const router = useRouter()
@@ -154,12 +92,6 @@ export default function Home() {
   const [formatState, setFormatState] = useState({ bold: false, italic: false })
   const [loading, setLoading] = useState(false)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
-  const [editingPostType, setEditingPostType] = useState<string | null>(null)
-  const [editingContent, setEditingContent] = useState('')
-  const [editingCaption, setEditingCaption] = useState('')
-  const [editingTag0, setEditingTag0] = useState('')
-  const [editingTag1, setEditingTag1] = useState('')
-  const [editingLoading, setEditingLoading] = useState(false)
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
   const [deleteConfirmPost, setDeleteConfirmPost] = useState<Post | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -171,10 +103,11 @@ export default function Home() {
   const [rethingCaption, setRethingCaption] = useState('')
   const [rethingBusy, setRethingBusy] = useState(false)
   const [notifUnread, setNotifUnread] = useState(false)
+  const [profileModulesForComposer, setProfileModulesForComposer] = useState<ProfileModuleRow[]>([])
+  const [composerModuleIds, setComposerModuleIds] = useState<Set<string>>(() => new Set())
+  const [modulesSheetPost, setModulesSheetPost] = useState<Post | null>(null)
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
-  const editContentEditorRef = useRef<HTMLDivElement | null>(null)
-  const editCaptionEditorRef = useRef<HTMLDivElement | null>(null)
   const imageFileInputRef = useRef<HTMLInputElement>(null)
 
   function clearImageComposerState() {
@@ -246,6 +179,13 @@ export default function Home() {
     } else {
       setNeedsUsername(true)
     }
+    const { data: mods } = await supabase
+      .from('profile_modules')
+      .select('id, name, sort_order, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('sort_order')
+    setProfileModulesForComposer((mods || []) as ProfileModuleRow[])
   }
 
   async function claimUsername(e: React.FormEvent) {
@@ -275,6 +215,8 @@ export default function Home() {
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
+    setProfileModulesForComposer([])
+    setComposerModuleIds(new Set())
   }
 
   const hydrateEngagement = useCallback(async (userId: string, list: Post[]) => {
@@ -461,18 +403,23 @@ export default function Home() {
     const metadata =
       rethingSource.metadata && typeof rethingSource.metadata === 'object' ? { ...rethingSource.metadata } : {}
     const rethingTags = parsePostTags(rethingSource.tags)
-    const { error } = await supabase.from('posts').insert({
-      user_id: user.id,
-      type: rethingSource.type,
-      content: rethingSource.content,
-      caption: stripHtml(rethingCaption).length ? rethingCaption.trim() : null,
-      metadata,
-      rething_of_post_id: rethingSource.id,
-      rething_from_username: origAuthor,
-      tags: rethingTags.length ? rethingTags : [],
-    })
+    const { data: rethingRow, error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: user.id,
+        type: rethingSource.type,
+        content: rethingSource.content,
+        caption: stripHtml(rethingCaption).length ? rethingCaption.trim() : null,
+        metadata,
+        rething_of_post_id: rethingSource.id,
+        rething_from_username: origAuthor,
+        tags: rethingTags.length ? rethingTags : [],
+      })
+      .select('id')
+      .single()
     if (error) alert(`Could not rething: ${error.message}`)
     else {
+      if (rethingRow?.id) void classifyPostAfterSave(rethingRow.id as string)
       setRethingSource(null)
       setRethingCaption('')
       await fetchFeed()
@@ -571,6 +518,7 @@ export default function Home() {
     setCaption('')
     setTagInput0('')
     setTagInput1('')
+    setComposerModuleIds(new Set())
     setPanel(null)
     setActiveEditor(null)
     setLinkPreview(null)
@@ -609,8 +557,6 @@ export default function Home() {
     if (!activeEditor) return
     if (activeEditor === 'text' && textEditorRef.current) setTextContent(textEditorRef.current.innerHTML)
     else if (activeEditor === 'caption' && captionEditorRef.current) setCaption(captionEditorRef.current.innerHTML)
-    else if (activeEditor === 'editContent' && editContentEditorRef.current) setEditingContent(editContentEditorRef.current.innerHTML)
-    else if (activeEditor === 'editCaption' && editCaptionEditorRef.current) setEditingCaption(editCaptionEditorRef.current.innerHTML)
   }
 
   function formatActiveEditor(command: 'bold' | 'italic' | 'createLink') {
@@ -631,15 +577,7 @@ export default function Home() {
 
   function updateToolbarState(targetEditor: EditorTarget | null) {
     const editorEl =
-      targetEditor === 'text'
-        ? textEditorRef.current
-        : targetEditor === 'caption'
-          ? captionEditorRef.current
-          : targetEditor === 'editContent'
-            ? editContentEditorRef.current
-            : targetEditor === 'editCaption'
-              ? editCaptionEditorRef.current
-              : null
+      targetEditor === 'text' ? textEditorRef.current : targetEditor === 'caption' ? captionEditorRef.current : null
     const selection = document.getSelection()
     if (!editorEl || !selection || !selection.anchorNode || !editorEl.contains(selection.anchorNode)) {
       setFormatState({ bold: false, italic: false })
@@ -754,7 +692,7 @@ export default function Home() {
             : null
         if (cached) metadata.link_preview = cached
         else {
-          const preview = await fetchLinkPreviewRaw(soleArticle)
+          const preview = await fetchLinkPreviewClient(soleArticle)
           if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
         }
       } else {
@@ -801,44 +739,37 @@ export default function Home() {
     }
 
     if (isValidHttpUrl(content) && !metadata.link_preview && type !== 'soundcloud') {
-      const preview = await fetchLinkPreviewRaw(content)
+      const preview = await fetchLinkPreviewClient(content)
       if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
     }
 
     const tagList = tagsFromComposerInputs(tagInput0, tagInput1)
-    const { error } = await supabase.from('posts').insert({
-      type,
-      content,
-      caption: stripHtml(caption).length ? caption.trim() : null,
-      user_id: user.id,
-      metadata,
-      tags: tagList,
-    })
+    const { data: created, error } = await supabase
+      .from('posts')
+      .insert({
+        type,
+        content,
+        caption: stripHtml(caption).length ? caption.trim() : null,
+        user_id: user.id,
+        metadata,
+        tags: tagList,
+      })
+      .select('id')
+      .single()
 
     if (error) alert(`Error creating post: ${error.message}`)
     else {
+      const newId = created?.id as string | undefined
+      if (newId && composerModuleIds.size > 0) {
+        const rows = [...composerModuleIds].map((module_id) => ({ post_id: newId, module_id }))
+        const { error: mErr } = await supabase.from('post_modules_user').insert(rows)
+        if (mErr) console.error('[modules] composer tags', mErr.message)
+      }
+      if (newId) void classifyPostAfterSave(newId)
       resetComposer()
       fetchFeed()
     }
     setLoading(false)
-  }
-
-  async function fetchLinkPreviewRaw(url: string): Promise<LinkPreview | null> {
-    if (!isValidHttpUrl(url)) return null
-    try {
-      const response = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
-      if (!response.ok) return null
-      const data = await response.json()
-      return {
-        url: typeof data.url === 'string' ? data.url : url,
-        siteName: typeof data.siteName === 'string' ? data.siteName : '',
-        title: typeof data.title === 'string' ? data.title : '',
-        description: typeof data.description === 'string' ? data.description : '',
-        image: typeof data.image === 'string' ? data.image : '',
-      }
-    } catch {
-      return null
-    }
   }
 
   async function fetchLinkPreview(url: string): Promise<LinkPreview | null> {
@@ -848,7 +779,7 @@ export default function Home() {
     }
     setPreviewLoading(true)
     try {
-      const preview = await fetchLinkPreviewRaw(url)
+      const preview = await fetchLinkPreviewClient(url)
       setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
       return preview
     } finally {
@@ -871,7 +802,7 @@ export default function Home() {
       void (async () => {
         setPreviewLoading(true)
         try {
-          const preview = await fetchLinkPreviewRaw(articleUrl.trim())
+          const preview = await fetchLinkPreviewClient(articleUrl.trim())
           if (!cancelled) setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
         } finally {
           if (!cancelled) setPreviewLoading(false)
@@ -899,7 +830,7 @@ export default function Home() {
       void (async () => {
         setTextComposerPreviewLoading(true)
         try {
-          const preview = await fetchLinkPreviewRaw(textSoleArticle)
+          const preview = await fetchLinkPreviewClient(textSoleArticle)
           if (!cancelled) setTextOnlyLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
         } finally {
           if (!cancelled) setTextComposerPreviewLoading(false)
@@ -913,72 +844,12 @@ export default function Home() {
     }
   }, [panel, textSoleArticle])
 
-  async function startEditing(post: Post) {
+  function startEditing(post: Post) {
     setEditingPostId(post.id)
-    setEditingPostType(post.type)
-    setEditingContent(post.content || '')
-    setEditingCaption(post.caption || '')
-    const t = parsePostTags(post.tags)
-    setEditingTag0(t[0] ?? '')
-    setEditingTag1(t[1] ?? '')
   }
 
   function cancelEditing() {
     setEditingPostId(null)
-    setEditingPostType(null)
-    setEditingContent('')
-    setEditingCaption('')
-    setEditingTag0('')
-    setEditingTag1('')
-  }
-
-  async function saveEdit(post: Post) {
-    if (!editingPostId || !user?.id) return
-    setEditingLoading(true)
-    const contentFromDom =
-      editingPostType === 'text' || editingPostType === 'quote'
-        ? (editContentEditorRef.current?.innerHTML ?? editingContent).trim()
-        : editingContent.trim()
-    const captionFromDom = (editCaptionEditorRef.current?.innerHTML ?? editingCaption).trim()
-    const updates: {
-      content: string
-      caption: string | null
-      metadata?: Record<string, unknown>
-      tags: string[]
-    } = {
-      content: contentFromDom,
-      caption: stripHtml(captionFromDom).length ? captionFromDom : null,
-      tags: tagsFromComposerInputs(editingTag0, editingTag1),
-    }
-
-    if (post.type === 'article' && isValidHttpUrl(updates.content)) {
-      const preview = await fetchLinkPreviewRaw(updates.content)
-      if (preview && linkPreviewHasVisual(preview)) {
-        updates.metadata = {
-          ...(post.metadata || {}),
-          link_preview: preview,
-        }
-      }
-    }
-
-    const { data, error } = await supabase
-      .from('posts')
-      .update(updates)
-      .eq('id', post.id)
-      .eq('user_id', user.id)
-      .select('id')
-
-    if (error) {
-      alert(`Could not update post: ${error.message}`)
-    } else if (!data?.length) {
-      alert(
-        'Could not save your edit (no rows updated). This usually means Supabase Row Level Security is missing an UPDATE policy for the posts table. Run the SQL in supabase/policies-posts-update.sql in the Supabase SQL editor, then try again.',
-      )
-    } else {
-      cancelEditing()
-      await fetchFeed()
-    }
-    setEditingLoading(false)
   }
 
   async function confirmDeletePost() {
@@ -1603,6 +1474,21 @@ export default function Home() {
                   </div>
                 </div>
 
+                <ComposerModuleChips
+                  modules={profileModulesForComposer}
+                  selectedIds={composerModuleIds}
+                  aiMaySuggestMore={profile?.modules_ai_enabled !== false}
+                  onToggle={(id) =>
+                    setComposerModuleIds((prev) => {
+                      const n = new Set(prev)
+                      if (n.has(id)) n.delete(id)
+                      else n.add(id)
+                      return n
+                    })
+                  }
+                  className="border-t border-[#dbdbdb] px-3.5 py-2.5"
+                />
+
                 <div className="flex items-center gap-2 border-t border-[#dbdbdb] px-3.5 py-2.5">
                   <p className={`mr-auto text-[11px] ${panel === 'text' && textCount > 450 ? 'text-red-400' : 'text-[#b8b8b8]'}`}>
                     {panel === 'text' ? `${textCount} / 500` : ''}
@@ -1654,75 +1540,39 @@ export default function Home() {
                   setDeleteConfirmPost(post)
                   setPostMenuOpenId(null)
                 }}
+                onModulesClick={
+                  user?.id === post.user_id
+                    ? () => {
+                        setModulesSheetPost(post)
+                        setPostMenuOpenId(null)
+                      }
+                    : undefined
+                }
               />
               {user?.id === post.user_id && editingPostId === post.id ? (
-                <div className="mb-6 mt-2 w-full rounded-md border border-zinc-200 bg-white p-4">
-                  <div className="mb-3">
-                    <div className="mb-2 flex gap-1">
-                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('bold')} className={`h-7 w-7 rounded-[3px] text-xs hover:bg-zinc-100 hover:text-zinc-900 ${formatState.bold ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}><strong>B</strong></button>
-                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('italic')} className={`h-7 w-7 rounded-[3px] text-xs italic hover:bg-zinc-100 hover:text-zinc-900 ${formatState.italic ? 'bg-zinc-100 text-zinc-900' : 'text-[#8e8e8e]'}`}>I</button>
-                      <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => formatActiveEditor('createLink')} className="h-7 w-10 rounded-[3px] text-xs text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900">Link</button>
-                    </div>
-                    {editingPostType === 'text' || editingPostType === 'quote' ? (
-                      <RichTextEditor
-                        value={editingContent}
-                        onChange={setEditingContent}
-                        onFocus={() => {
-                          setActiveEditor('editContent')
-                          updateToolbarState('editContent')
-                        }}
-                        placeholder="Edit post content..."
-                        className="mb-3 min-h-[90px] w-full rounded-md border border-zinc-200 p-2 text-sm text-zinc-800 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
-                        editorRef={editContentEditorRef}
-                        maxPlainTextLength={500}
-                        onProfilePathNavigate={(p) => router.push(p)}
-                      />
-                    ) : (
-                      <input value={editingContent} onChange={(e) => setEditingContent(e.target.value)} className="mb-3 w-full rounded-md border border-zinc-200 p-2 text-sm focus:outline-none" />
-                    )}
-                    <RichTextEditor
-                      value={editingCaption}
-                      onChange={setEditingCaption}
-                      onFocus={() => {
-                        setActiveEditor('editCaption')
-                        updateToolbarState('editCaption')
-                      }}
-                      placeholder="Edit caption..."
-                      className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
-                      editorRef={editCaptionEditorRef}
-                      onProfilePathNavigate={(p) => router.push(p)}
-                    />
-                    <div className="mt-3">
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Tags (max 2)</p>
-                      <div className="flex flex-wrap gap-2">
-                        <input
-                          value={editingTag0}
-                          onChange={(e) => setEditingTag0(e.target.value)}
-                          placeholder="first tag"
-                          maxLength={40}
-                          className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
-                        />
-                        <input
-                          value={editingTag1}
-                          onChange={(e) => setEditingTag1(e.target.value)}
-                          placeholder="second tag"
-                          maxLength={40}
-                          className="min-w-[8rem] flex-1 rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={cancelEditing} className="text-sm text-zinc-500 hover:text-zinc-900">Cancel</button>
-                    <button type="button" onClick={() => void saveEdit(post)} disabled={editingLoading} className="rounded-full bg-zinc-900 px-4 py-1 text-sm text-white disabled:opacity-50">{editingLoading ? 'Saving...' : 'Save'}</button>
-                  </div>
-                </div>
+                <InlinePostEditor
+                  post={post}
+                  userId={user.id}
+                  onCancel={cancelEditing}
+                  onSaved={() => void fetchFeed()}
+                />
               ) : null}
             </div>
             )
           })}
         </section>
       </div>
+
+      <PostModulesSheet
+        post={modulesSheetPost}
+        modules={profileModulesForComposer}
+        open={modulesSheetPost !== null}
+        onClose={() => setModulesSheetPost(null)}
+        onUpdated={() => {
+          setModulesSheetPost(null)
+          void fetchFeed()
+        }}
+      />
     </main>
   )
 }

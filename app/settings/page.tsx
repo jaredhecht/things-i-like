@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ElsewhereSettingsSection } from '@/src/components/ElsewhereSettingsSection'
+import { ModulesSettingsSection } from '@/src/components/ModulesSettingsSection'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
@@ -370,6 +371,8 @@ export default function SettingsPage() {
             </button>
           </div>
         </section>
+
+        {profile ? <ModulesSettingsSection userId={user.id} /> : null}
 
         {profile ? (
           <ElsewhereSettingsSection

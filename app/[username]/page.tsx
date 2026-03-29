@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ElsewhereProfileGlobe } from '@/src/components/ElsewhereProfileGlobe'
 import { FollowButton } from '@/src/components/FollowButton'
+import { ProfileModuleRails, type ProfileModuleRail } from '@/src/components/ProfileModuleRails'
 import { ProfilePostList } from '@/src/components/ProfilePostList'
 import type { ElsewhereLinkRow } from '@/src/lib/elsewhere'
 import { fetchAllPostsForUserId } from '@/src/lib/posts-batched'
@@ -76,6 +77,32 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     }
   }
 
+  const postById = new Map(list.map((p) => [p.id, p]))
+  let moduleRails: ProfileModuleRail[] = []
+  const { data: modRows, error: modErr } = await supabase
+    .from('profile_modules')
+    .select('id, name, sort_order, is_active')
+    .eq('user_id', profile.id)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+
+  if (!modErr && modRows && modRows.length > 0 && list.length > 0) {
+    const moduleIds = modRows.map((m) => m.id as string)
+    const { data: puAll } = await supabase.from('post_modules_user').select('post_id, module_id').in('module_id', moduleIds)
+    const { data: paAll } = await supabase.from('post_modules_ai').select('post_id, module_id').in('module_id', moduleIds)
+    const byMod = new Map<string, Set<string>>()
+    for (const id of moduleIds) byMod.set(id, new Set())
+    for (const r of puAll || []) byMod.get(r.module_id as string)?.add(r.post_id as string)
+    for (const r of paAll || []) byMod.get(r.module_id as string)?.add(r.post_id as string)
+    for (const m of modRows) {
+      const mid = m.id as string
+      const pids = [...(byMod.get(mid) || [])]
+      const posts = pids.map((id) => postById.get(id)).filter(Boolean) as Post[]
+      posts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      if (posts.length > 0) moduleRails.push({ id: mid, name: m.name as string, posts })
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#fafafa]">
       <div className="mx-auto max-w-2xl px-4 py-10">
@@ -119,6 +146,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             <FollowButton followingId={profile.id} profileUsername={profile.username} />
           </div>
         </header>
+
+        {moduleRails.length > 0 ? (
+          <ProfileModuleRails profileUserId={profile.id} rails={moduleRails} initialLikeCounts={initialLikeCounts} />
+        ) : null}
 
         <ProfilePostList key={profile.id} posts={list} initialLikeCounts={initialLikeCounts} />
       </div>

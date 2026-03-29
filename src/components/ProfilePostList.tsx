@@ -1,6 +1,8 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { InlinePostEditor } from '@/src/components/InlinePostEditor'
 import { PostCard } from '@/src/components/PostCard'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
@@ -12,10 +14,13 @@ export function ProfilePostList({
   posts: Post[]
   initialLikeCounts: Record<string, number>
 }) {
+  const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() => ({ ...initialLikeCounts }))
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
+  const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
 
   const hydrateMyEngagement = useCallback(async (uid: string, ids: string[]) => {
     if (ids.length === 0) {
@@ -98,6 +103,25 @@ export function ProfilePostList({
     return () => subscription.unsubscribe()
   }, [posts, hydrateMyEngagement])
 
+  useEffect(() => {
+    if (!postMenuOpenId) return
+    const close = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && !el.closest('[data-post-menu-root]')) setPostMenuOpenId(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [postMenuOpenId])
+
+  useEffect(() => {
+    if (!postMenuOpenId) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPostMenuOpenId(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [postMenuOpenId])
+
   async function toggleLike(postId: string) {
     if (!userId) return
     const liked = likedPostIds.has(postId)
@@ -154,18 +178,42 @@ export function ProfilePostList({
       {posts.map((post) => {
         const n = likeCounts[post.id] ?? 0
         const canInteract = Boolean(userId && post.user_id && post.user_id !== userId)
+        const isOwner = Boolean(userId && post.user_id === userId)
         return (
-          <PostCard
-            key={post.id}
-            post={post}
-            showAuthor={false}
-            profileLikeBar
-            likeCount={n}
-            liked={likedPostIds.has(post.id)}
-            onLike={canInteract && n > 0 ? () => void toggleLike(post.id) : undefined}
-            bookmarked={bookmarkedPostIds.has(post.id)}
-            onBookmark={canInteract ? () => void toggleBookmark(post.id) : undefined}
-          />
+          <div key={post.id}>
+            <PostCard
+              post={post}
+              isOwner={isOwner}
+              showAuthor={false}
+              profileLikeBar
+              likeCount={n}
+              liked={likedPostIds.has(post.id)}
+              onLike={canInteract && n > 0 ? () => void toggleLike(post.id) : undefined}
+              bookmarked={bookmarkedPostIds.has(post.id)}
+              onBookmark={canInteract ? () => void toggleBookmark(post.id) : undefined}
+              menuOpen={postMenuOpenId === post.id}
+              onMenuToggle={() => setPostMenuOpenId((cur) => (cur === post.id ? null : post.id))}
+              onEditClick={
+                isOwner
+                  ? () => {
+                      setEditingPostId(post.id)
+                      setPostMenuOpenId(null)
+                    }
+                  : undefined
+              }
+            />
+            {isOwner && userId && editingPostId === post.id ? (
+              <InlinePostEditor
+                post={post}
+                userId={userId}
+                onCancel={() => setEditingPostId(null)}
+                onSaved={() => {
+                  setEditingPostId(null)
+                  router.refresh()
+                }}
+              />
+            ) : null}
+          </div>
         )
       })}
     </section>

@@ -18,6 +18,7 @@ import {
   type Post,
 } from '@/src/lib/post-helpers'
 import { parsePostTags } from '@/src/lib/post-tags'
+import { PostShareControl, SharePostButton } from '@/src/components/SharePostButton'
 
 function PlainWithMentions({ text }: { text: string }) {
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
@@ -122,11 +123,16 @@ export function PostCard({
   bookmarked,
   onBookmark,
   onRething,
+  rethingCount = 0,
   menuOpen,
   onMenuToggle,
   onEditClick,
   onDeleteClick,
   onModulesClick,
+  /** Absolute share URL (e.g. server-built canonical link). */
+  shareUrl: shareUrlProp,
+  /** Author handle; builds share URL on the client when `shareUrl` is omitted. */
+  shareAuthorUsername,
 }: {
   post: Post
   isOwner?: boolean
@@ -143,13 +149,23 @@ export function PostCard({
   bookmarked?: boolean
   onBookmark?: () => void
   onRething?: () => void
+  /** How many rething rows point at this post (original only). */
+  rethingCount?: number
   menuOpen?: boolean
   onMenuToggle?: () => void
   onEditClick?: () => void
   onDeleteClick?: () => void
   onModulesClick?: () => void
+  shareUrl?: string | null
+  shareAuthorUsername?: string | null
 }) {
   const router = useRouter()
+  const shareEl = shareUrlProp?.trim()
+    ? <SharePostButton url={shareUrlProp.trim()} />
+    : shareAuthorUsername?.trim()
+      ? <PostShareControl username={shareAuthorUsername.trim()} postId={post.id} />
+      : null
+  const showShare = Boolean(shareEl)
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const htmlBody = useMemo(() => linkifyAtMentionsInHtml(post.content || ''), [post.content])
   const htmlCaption = useMemo(() => linkifyAtMentionsInHtml(post.caption || ''), [post.caption])
@@ -239,11 +255,12 @@ export function PostCard({
   const showEngagement =
     dashboardActions &&
     (bookmarksFeed
-      ? Boolean(onBookmark || (!isOwner && (onLike || onRething)))
-      : !isOwner && Boolean(onLike || onRething || onBookmark))
+      ? Boolean(onBookmark || (!isOwner && (onLike || onRething || rethingCount > 0)))
+      : !isOwner && Boolean(onLike || onRething || onBookmark || rethingCount > 0))
   const showProfileLikeRow = profileLikeBar && likeCount > 0
-  const showProfileActions = profileLikeBar && (showProfileLikeRow || !!onBookmark)
-  const showFooterDivider = showEngagement || showProfileActions || hasTags
+  const showProfileActions = profileLikeBar && !isOwner && (showProfileLikeRow || !!onBookmark || rethingCount > 0)
+  const showOwnerLikeRething = Boolean(isOwner && !bookmarksFeed && (dashboardActions || profileLikeBar))
+  const showFooterDivider = showEngagement || showProfileActions || hasTags || showOwnerLikeRething || showShare
   const originalHandle = post.rething_from_username?.trim()
   /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
   const showAuthorHandle = Boolean(
@@ -507,8 +524,9 @@ export function PostCard({
         className={`flex items-center justify-between gap-3 ${showFooterDivider ? 'mt-3 border-t border-zinc-100 pt-3' : 'mt-1 pt-0.5'}`}
       >
         <p className="text-xs text-zinc-300">{postDate}</p>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
         {showEngagement ? (
-          <div className="flex shrink-0 items-center justify-end gap-1">
+          <>
             {onLike ? (
               <div className="flex items-center gap-0.5">
                 <button
@@ -529,6 +547,7 @@ export function PostCard({
                 ) : null}
               </div>
             ) : null}
+            {showShare ? shareEl : null}
             {onBookmark ? (
               <button
                 type="button"
@@ -545,18 +564,50 @@ export function PostCard({
               </button>
             ) : null}
             {onRething ? (
-              <button
-                type="button"
-                onClick={onRething}
-                aria-label="Rething"
-                className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
-              >
-                <RethingIcon className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={onRething}
+                  aria-label="Rething"
+                  className="rounded-full p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
+                >
+                  <RethingIcon className="h-5 w-5" />
+                </button>
+                {rethingCount > 0 ? (
+                  <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{rethingCount}</span>
+                ) : null}
+              </div>
+            ) : rethingCount > 0 ? (
+              <div className="flex items-center gap-0.5" aria-label={`${rethingCount} rethings`}>
+                <span className="inline-flex rounded-full p-2 text-zinc-400" aria-hidden>
+                  <RethingIcon className="h-5 w-5" />
+                </span>
+                <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{rethingCount}</span>
+              </div>
             ) : null}
-          </div>
+          </>
+        ) : showOwnerLikeRething ? (
+          <>
+            <div className="flex items-center gap-0.5">
+              <span className="inline-flex rounded-full p-2 text-zinc-400" aria-hidden>
+                <HeartIcon filled={false} className="h-5 w-5" />
+              </span>
+              {likeCount > 0 ? (
+                <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{likeCount}</span>
+              ) : null}
+            </div>
+            {showShare ? shareEl : null}
+            {rethingCount > 0 ? (
+              <div className="flex items-center gap-0.5" aria-label={`${rethingCount} rethings`}>
+                <span className="inline-flex rounded-full p-2 text-zinc-400" aria-hidden>
+                  <RethingIcon className="h-5 w-5" />
+                </span>
+                <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{rethingCount}</span>
+              </div>
+            ) : null}
+          </>
         ) : showProfileActions ? (
-          <div className="flex shrink-0 items-center justify-end gap-1">
+          <>
             {showProfileLikeRow ? (
               onLike ? (
                 <>
@@ -586,6 +637,7 @@ export function PostCard({
                 </span>
               )
             ) : null}
+            {showShare ? shareEl : null}
             {onBookmark ? (
               <button
                 type="button"
@@ -601,8 +653,18 @@ export function PostCard({
                 <BookmarkIcon filled={!!bookmarked} className="h-5 w-5" />
               </button>
             ) : null}
-          </div>
+            {rethingCount > 0 ? (
+              <span className="flex items-center gap-0.5" aria-label={`${rethingCount} rethings`}>
+                <span className="inline-flex rounded-full p-2 text-zinc-400" aria-hidden>
+                  <RethingIcon className="h-5 w-5" />
+                </span>
+                <span className="min-w-[1.25rem] pr-1 text-xs tabular-nums text-zinc-500">{rethingCount}</span>
+              </span>
+            ) : null}
+          </>
         ) : null}
+        {!showEngagement && !showOwnerLikeRething && !showProfileActions && showShare ? shareEl : null}
+        </div>
       </div>
     </article>
   )

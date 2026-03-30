@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { PostCard } from '@/src/components/PostCard'
 import { UserNavMenu } from '@/src/components/UserNavMenu'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 import { supabase } from '@/src/lib/supabase'
 
 type AuthorMeta = {
@@ -37,12 +38,14 @@ export function TagFeed({
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
+  const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
 
   const hydrateEngagement = useCallback(async (userId: string, list: Post[]) => {
     if (list.length === 0) {
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
+      setRethingCounts({})
       return
     }
     const ids = list.map((p) => p.id)
@@ -60,9 +63,11 @@ export function TagFeed({
       const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', userId).in('post_id', slice)
       for (const row of bmRows || []) bookmarks.add(row.post_id as string)
     }
+    const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(my)
     setBookmarkedPostIds(bookmarks)
+    setRethingCounts(rethingByPost)
   }, [])
 
   async function loadProfile(userId: string) {
@@ -92,6 +97,7 @@ export function TagFeed({
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
+      setRethingCounts({})
       return
     }
     void hydrateEngagement(user.id, posts)
@@ -198,10 +204,12 @@ export function TagFeed({
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}
+                rethingCount={rethingCounts[post.id] ?? 0}
                 liked={likedPostIds.has(post.id)}
                 onLike={user?.id && post.user_id !== user.id ? () => void toggleLike(post.id) : undefined}
                 bookmarked={bookmarkedPostIds.has(post.id)}
                 onBookmark={user?.id && post.user_id !== user.id ? () => void toggleBookmark(post.id) : undefined}
+                shareAuthorUsername={author?.username ?? null}
               />
             )
           })}

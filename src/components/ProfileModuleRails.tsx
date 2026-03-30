@@ -9,6 +9,7 @@ import { removePostFromModule } from '@/src/lib/modules-client'
 import type { ProfileModuleRow } from '@/src/lib/modules-ui'
 import { classifyPostAfterSave } from '@/src/lib/modules-ui'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 import { supabase } from '@/src/lib/supabase'
 
 /** Matches profile page main background for scroll-edge fades. */
@@ -84,10 +85,12 @@ export type ProfileModuleRail = { id: string; name: string; posts: Post[] }
 
 export function ProfileModuleRails({
   profileUserId,
+  profileUsername,
   rails,
   initialLikeCounts,
 }: {
   profileUserId: string
+  profileUsername: string
   rails: ProfileModuleRail[]
   initialLikeCounts: Record<string, number>
 }) {
@@ -101,6 +104,7 @@ export function ProfileModuleRails({
   const [myModules, setMyModules] = useState<ProfileModuleRow[]>([])
   const [removeBusyKey, setRemoveBusyKey] = useState<string | null>(null)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
+  const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
 
   const isOwnProfile = Boolean(userId && userId === profileUserId)
 
@@ -157,6 +161,21 @@ export function ProfileModuleRails({
       cancelled = true
     }
   }, [allRailPostIds.join(','), initialLikeCounts])
+
+  useEffect(() => {
+    if (allRailPostIds.length === 0) {
+      setRethingCounts({})
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const next = await fetchRethingCountsForPostIds(supabase, allRailPostIds)
+      if (!cancelled) setRethingCounts(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [allRailPostIds.join(',')])
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data: { user } }) => {
@@ -299,10 +318,12 @@ export function ProfileModuleRails({
                     showAuthor={false}
                     profileLikeBar
                     likeCount={n}
+                    rethingCount={rethingCounts[post.id] ?? 0}
                     liked={likedPostIds.has(post.id)}
                     onLike={canInteract && n > 0 ? () => void toggleLike(post.id) : undefined}
                     bookmarked={bookmarkedPostIds.has(post.id)}
                     onBookmark={canInteract ? () => void toggleBookmark(post.id) : undefined}
+                    shareAuthorUsername={profileUsername}
                     menuOpen={menuOpenId === post.id}
                     onMenuToggle={() => setMenuOpenId((cur) => (cur === post.id ? null : post.id))}
                     onEditClick={

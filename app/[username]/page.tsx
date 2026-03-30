@@ -148,10 +148,15 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         </header>
 
         {moduleRails.length > 0 ? (
-          <ProfileModuleRails profileUserId={profile.id} rails={moduleRails} initialLikeCounts={initialLikeCounts} />
+          <ProfileModuleRails
+            profileUserId={profile.id}
+            profileUsername={profile.username}
+            rails={moduleRails}
+            initialLikeCounts={initialLikeCounts}
+          />
         ) : null}
 
-        <ProfilePostList key={profile.id} posts={list} initialLikeCounts={initialLikeCounts} />
+        <ProfilePostList key={profile.id} profileUsername={profile.username} posts={list} initialLikeCounts={initialLikeCounts} />
       </div>
     </main>
   )

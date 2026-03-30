@@ -6,11 +6,14 @@ import { InlinePostEditor } from '@/src/components/InlinePostEditor'
 import { PostCard } from '@/src/components/PostCard'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 
 export function ProfilePostList({
+  profileUsername,
   posts,
   initialLikeCounts,
 }: {
+  profileUsername: string
   posts: Post[]
   initialLikeCounts: Record<string, number>
 }) {
@@ -21,6 +24,7 @@ export function ProfilePostList({
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
   const [postMenuOpenId, setPostMenuOpenId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
 
   const hydrateMyEngagement = useCallback(async (uid: string, ids: string[]) => {
     if (ids.length === 0) {
@@ -73,6 +77,22 @@ export function ProfilePostList({
       if (!cancelled) setLikeCounts(next)
     })()
 
+    return () => {
+      cancelled = true
+    }
+  }, [posts])
+
+  useEffect(() => {
+    const ids = posts.map((p) => p.id)
+    if (ids.length === 0) {
+      setRethingCounts({})
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const next = await fetchRethingCountsForPostIds(supabase, ids)
+      if (!cancelled) setRethingCounts(next)
+    })()
     return () => {
       cancelled = true
     }
@@ -187,10 +207,12 @@ export function ProfilePostList({
               showAuthor={false}
               profileLikeBar
               likeCount={n}
+              rethingCount={rethingCounts[post.id] ?? 0}
               liked={likedPostIds.has(post.id)}
               onLike={canInteract && n > 0 ? () => void toggleLike(post.id) : undefined}
               bookmarked={bookmarkedPostIds.has(post.id)}
               onBookmark={canInteract ? () => void toggleBookmark(post.id) : undefined}
+              shareAuthorUsername={profileUsername}
               menuOpen={postMenuOpenId === post.id}
               onMenuToggle={() => setPostMenuOpenId((cur) => (cur === post.id ? null : post.id))}
               onEditClick={

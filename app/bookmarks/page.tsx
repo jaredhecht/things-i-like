@@ -7,6 +7,7 @@ import { PostCard } from '@/src/components/PostCard'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 
 type AuthorMeta = {
   username: string
@@ -21,6 +22,7 @@ export default function BookmarksPage() {
   const [authorByUserId, setAuthorByUserId] = useState<Record<string, AuthorMeta>>({})
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
+  const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -33,6 +35,7 @@ export default function BookmarksPage() {
       setAuthorByUserId({})
       setLikeCounts({})
       setLikedPostIds(new Set())
+      setRethingCounts({})
       setLoading(false)
       return
     }
@@ -47,6 +50,7 @@ export default function BookmarksPage() {
       console.error('[bookmarks]', markErr.message)
       setPosts([])
       setAuthorByUserId({})
+      setRethingCounts({})
       setLoading(false)
       return
     }
@@ -57,6 +61,7 @@ export default function BookmarksPage() {
       setAuthorByUserId({})
       setLikeCounts({})
       setLikedPostIds(new Set())
+      setRethingCounts({})
       setLoading(false)
       return
     }
@@ -65,6 +70,7 @@ export default function BookmarksPage() {
     if (postErr) {
       console.error('[bookmarks]', postErr.message)
       setPosts([])
+      setRethingCounts({})
       setLoading(false)
       return
     }
@@ -97,8 +103,10 @@ export default function BookmarksPage() {
         if (row.user_id === u.id) myLiked.add(row.post_id)
       }
     }
+    const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(myLiked)
+    setRethingCounts(rethingByPost)
     setLoading(false)
   }, [])
 
@@ -212,10 +220,12 @@ export default function BookmarksPage() {
                   dashboardActions
                   bookmarksFeed
                   likeCount={likeCounts[post.id] ?? 0}
+                  rethingCount={rethingCounts[post.id] ?? 0}
                   liked={likedPostIds.has(post.id)}
                   onLike={post.user_id && post.user_id !== user.id ? () => void toggleLike(post.id) : undefined}
                   bookmarked
                   onBookmark={() => void removeBookmark(post.id)}
+                  shareAuthorUsername={author?.username ?? null}
                 />
               )
             })}

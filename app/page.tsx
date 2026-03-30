@@ -32,6 +32,7 @@ import type { ProfileModuleRow } from '../src/lib/modules-ui'
 import { fetchLinkPreviewClient } from '../src/lib/link-preview-client'
 import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
+import { fetchRethingCountsForPostIds } from '../src/lib/rething-counts'
 import { supabase } from '../src/lib/supabase'
 
 type Profile = {
@@ -99,6 +100,7 @@ export default function Home() {
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({})
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
+  const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
   const [rethingSource, setRethingSource] = useState<Post | null>(null)
   const [rethingCaption, setRethingCaption] = useState('')
   const [rethingBusy, setRethingBusy] = useState(false)
@@ -224,6 +226,7 @@ export default function Home() {
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
+      setRethingCounts({})
       return
     }
     const ids = list.map((p) => p.id)
@@ -241,9 +244,11 @@ export default function Home() {
       const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', userId).in('post_id', slice)
       for (const row of bmRows || []) bookmarks.add(row.post_id as string)
     }
+    const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(my)
     setBookmarkedPostIds(bookmarks)
+    setRethingCounts(rethingByPost)
   }, [])
 
   const loadPublicPreviewPosts = useCallback(async () => {
@@ -453,6 +458,7 @@ export default function Home() {
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
+      setRethingCounts({})
       void loadPublicPreviewPosts()
       return
     }
@@ -1525,6 +1531,7 @@ export default function Home() {
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}
+                rethingCount={rethingCounts[post.id] ?? 0}
                 liked={likedPostIds.has(post.id)}
                 onLike={user?.id && post.user_id !== user.id ? () => void toggleLike(post.id) : undefined}
                 bookmarked={bookmarkedPostIds.has(post.id)}
@@ -1548,6 +1555,7 @@ export default function Home() {
                       }
                     : undefined
                 }
+                shareAuthorUsername={author?.username ?? null}
               />
               {user?.id === post.user_id && editingPostId === post.id ? (
                 <InlinePostEditor

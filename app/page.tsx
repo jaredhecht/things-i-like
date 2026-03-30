@@ -66,8 +66,6 @@ const PUBLIC_PREVIEW_MAX_PAGES = 10
 const PROFILE_IN_CHUNK = 100
 /** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
 const SIGNED_IN_FEED_LIMIT = 150
-/** localStorage: `onboarding` = stay on People Who Like Things until user taps Show Me The Things; `feed` = normal home feed. Missing = treat as feed (returning users). */
-const HOME_FEED_GATE_KEY = 'til_home_feed_gate'
 
 export default function Home() {
   const router = useRouter()
@@ -120,9 +118,9 @@ export default function Home() {
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const imageFileInputRef = useRef<HTMLInputElement>(null)
   const isOnboardingFeedRef = useRef(false)
+  /** Latest signed-in user for callbacks that must not call `getUser()` (avoids auth lock races on startup). */
+  const userRef = useRef<User | null>(null)
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
-  /** True while showing People Who Like Things (0 follows, or following ≥1 but still in onboarding gate). */
-  const [homeDirectoryActive, setHomeDirectoryActive] = useState(false)
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
 
@@ -230,8 +228,7 @@ export default function Home() {
   }
 
   async function signOut() {
-    if (typeof window !== 'undefined') localStorage.removeItem(HOME_FEED_GATE_KEY)
-    setHomeDirectoryActive(false)
+    if (typeof window !== 'undefined') localStorage.removeItem('til_home_feed_gate')
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
@@ -368,21 +365,9 @@ export default function Home() {
         setRethingCounts({})
       }
       if (n === 0) {
-        if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'onboarding')
-        setHomeDirectoryActive(true)
         clearSignedInFeed()
         return
       }
-      const gate = typeof window !== 'undefined' ? localStorage.getItem(HOME_FEED_GATE_KEY) : null
-      if (gate === 'onboarding') {
-        setHomeDirectoryActive(true)
-        clearSignedInFeed()
-        return
-      }
-      if (typeof window !== 'undefined' && gate === null) {
-        localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
-      }
-      setHomeDirectoryActive(false)
       const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
       await fetchFeedForUser(userId, followingIds)
     },
@@ -407,38 +392,16 @@ export default function Home() {
       setRethingCounts({})
     }
     if (n === 0) {
-      if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'onboarding')
-      setHomeDirectoryActive(true)
       clearSignedInFeed()
       return
     }
-    const gate = typeof window !== 'undefined' ? localStorage.getItem(HOME_FEED_GATE_KEY) : null
-    if (gate === 'onboarding') {
-      setHomeDirectoryActive(true)
-      clearSignedInFeed()
-      setDirectoryRefreshKey((k) => k + 1)
-      return
-    }
-    if (typeof window !== 'undefined' && gate === null) {
-      localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
-    }
-    setHomeDirectoryActive(false)
     const followingIds = [...new Set((data || []).map((f) => f.following_id))]
     await fetchFeedForUser(user.id, followingIds)
   }, [user?.id, fetchFeedForUser])
 
-  function showMeTheThings() {
-    if (!user?.id) return
-    if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
-    setHomeDirectoryActive(false)
-    void fetchFeedForUser(user.id)
-  }
-
   async function fetchFeed() {
-    const {
-      data: { user: u },
-    } = await supabase.auth.getUser()
-    if (!u) return
+    const u = userRef.current
+    if (!u?.id) return
     if (isOnboardingFeedRef.current) {
       setDirectoryRefreshKey((k) => k + 1)
       return
@@ -552,13 +515,16 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    userRef.current = user
+  }, [user])
+
+  useEffect(() => {
     if (!user?.id) {
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
-      setHomeDirectoryActive(false)
       setFeedBootstrapped(true)
       void loadPublicPreviewPosts()
       return
@@ -567,7 +533,9 @@ export default function Home() {
     setFeedBootstrapped(false)
     const sessionUser = user
     void (async () => {
-      await Promise.all([syncAvatarToProfile(sessionUser), runHomeBootstrap(sessionUser.id)])
+      await syncAvatarToProfile(sessionUser)
+      if (cancelled) return
+      await runHomeBootstrap(sessionUser.id)
       if (!cancelled) setFeedBootstrapped(true)
     })()
     return () => {
@@ -583,14 +551,11 @@ export default function Home() {
     const uid = user.id
     let cancelled = false
     const refreshUnread = async () => {
-      const {
-        data: { user: current },
-      } = await supabase.auth.getUser()
-      if (!current?.id || cancelled) return
+      if (cancelled) return
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', current.id)
+        .eq('user_id', uid)
         .is('read_at', null)
       if (error || cancelled) return
       setNotifUnread((count ?? 0) > 0)
@@ -988,7 +953,7 @@ export default function Home() {
   }
 
   const showPeopleDirectory = Boolean(
-    user?.id && profile && feedBootstrapped && followingOtherCount !== null && homeDirectoryActive,
+    user?.id && profile && feedBootstrapped && followingOtherCount !== null && followingOtherCount === 0,
   )
   const showSignedInPostFeed = Boolean(user?.id && profile && feedBootstrapped && !showPeopleDirectory)
 
@@ -1627,17 +1592,6 @@ export default function Home() {
           </section>
           {showPeopleDirectory ? (
             <div className="mb-10">
-              {followingOtherCount !== null && followingOtherCount > 0 ? (
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    onClick={() => showMeTheThings()}
-                    className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
-                  >
-                    Show Me The Things →
-                  </button>
-                </div>
-              ) : null}
               <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
               <PeopleWhoLikeThingsDirectory
                 currentUserId={user.id}

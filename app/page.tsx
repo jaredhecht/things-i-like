@@ -187,19 +187,21 @@ export default function Home() {
   }
 
   async function loadProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    const [{ data }, { data: mods }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase
+        .from('profile_modules')
+        .select('id, name, sort_order, is_active')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('sort_order'),
+    ])
     if (data) {
       setProfile(data)
       setNeedsUsername(false)
     } else {
       setNeedsUsername(true)
     }
-    const { data: mods } = await supabase
-      .from('profile_modules')
-      .select('id, name, sort_order, is_active')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .order('sort_order')
     setProfileModulesForComposer((mods || []) as ProfileModuleRow[])
   }
 
@@ -318,10 +320,15 @@ export default function Home() {
   }, [])
 
   const fetchFeedForUser = useCallback(
-    async (userId: string) => {
-      const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
-      if (followErr) console.error('Error fetching follows:', followErr)
-      const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
+    async (userId: string, preloadedFollowingIds?: string[]) => {
+      let followingIds: string[]
+      if (preloadedFollowingIds) {
+        followingIds = preloadedFollowingIds
+      } else {
+        const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+        if (followErr) console.error('Error fetching follows:', followErr)
+        followingIds = [...new Set((follows || []).map((f) => f.following_id))]
+      }
       const authorIds = [...new Set([userId, ...followingIds])]
       const [list, { data: profs }] = await Promise.all([
         fetchRecentPostsForAuthorIds(supabase, authorIds, SIGNED_IN_FEED_LIMIT).catch((error) => {
@@ -375,7 +382,8 @@ export default function Home() {
         localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
       }
       setHomeDirectoryActive(false)
-      await fetchFeedForUser(userId)
+      const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
+      await fetchFeedForUser(userId, followingIds)
     },
     [fetchFeedForUser],
   )
@@ -414,7 +422,8 @@ export default function Home() {
       localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
     }
     setHomeDirectoryActive(false)
-    await fetchFeedForUser(user.id)
+    const followingIds = [...new Set((data || []).map((f) => f.following_id))]
+    await fetchFeedForUser(user.id, followingIds)
   }, [user?.id, fetchFeedForUser])
 
   function showMeTheThings() {
@@ -557,9 +566,7 @@ export default function Home() {
     setFeedBootstrapped(false)
     const sessionUser = user
     void (async () => {
-      await syncAvatarToProfile(sessionUser)
-      if (cancelled) return
-      await runHomeBootstrap(sessionUser.id)
+      await Promise.all([syncAvatarToProfile(sessionUser), runHomeBootstrap(sessionUser.id)])
       if (!cancelled) setFeedBootstrapped(true)
     })()
     return () => {

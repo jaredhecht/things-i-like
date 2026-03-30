@@ -8,6 +8,7 @@ import { ComposerModuleChips } from '../src/components/ComposerModuleChips'
 import { InlinePostEditor } from '../src/components/InlinePostEditor'
 import { PostCard } from '../src/components/PostCard'
 import { RichTextEditor } from '../src/components/RichTextEditor'
+import { PeopleWhoLikeThingsDirectory } from '../src/components/PeopleWhoLikeThingsDirectory'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
   getSoundCloudWidgetSrc,
@@ -63,6 +64,8 @@ const PUBLIC_PREVIEW_MAX_PAGES = 40
 const PROFILE_IN_CHUNK = 100
 /** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
 const SIGNED_IN_FEED_LIMIT = 150
+/** sessionStorage: user chose main feed while still in follow-someone onboarding (cleared when follow count hits 0). */
+const MAIN_FEED_STORAGE_KEY = 'til_onboarding_main_feed'
 
 export default function Home() {
   const router = useRouter()
@@ -114,6 +117,11 @@ export default function Home() {
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const imageFileInputRef = useRef<HTMLInputElement>(null)
+  const isOnboardingFeedRef = useRef(false)
+  const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
+  const [choseMainFeed, setChoseMainFeed] = useState(false)
+  const [feedBootstrapped, setFeedBootstrapped] = useState(false)
+  const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
 
   function clearImageComposerState() {
     setImageLocalPreview((prev) => {
@@ -217,6 +225,7 @@ export default function Home() {
   }
 
   async function signOut() {
+    if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
@@ -334,12 +343,76 @@ export default function Home() {
     [hydrateEngagement],
   )
 
+  const runHomeBootstrap = useCallback(
+    async (userId: string) => {
+      const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+      if (followErr) console.error('Error fetching follows (bootstrap):', followErr)
+      const n = (follows || []).length
+      setFollowingOtherCount(n)
+      const clearSignedInFeed = () => {
+        setPosts([])
+        setAuthorByUserId({})
+        setLikeCounts({})
+        setLikedPostIds(new Set())
+        setBookmarkedPostIds(new Set())
+        setRethingCounts({})
+      }
+      if (n === 0) {
+        if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
+        setChoseMainFeed(false)
+        clearSignedInFeed()
+        return
+      }
+      const wantsMain =
+        typeof window !== 'undefined' && sessionStorage.getItem(MAIN_FEED_STORAGE_KEY) === '1'
+      setChoseMainFeed(wantsMain)
+      if (wantsMain) {
+        await fetchFeedForUser(userId)
+      } else {
+        clearSignedInFeed()
+      }
+    },
+    [fetchFeedForUser],
+  )
+
+  const refetchFollowingCount = useCallback(async () => {
+    if (!user?.id) return
+    const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', user.id)
+    if (error) {
+      console.error('refetchFollowingCount:', error)
+      return
+    }
+    const n = (data || []).length
+    setFollowingOtherCount(n)
+    if (n === 0) {
+      if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
+      setChoseMainFeed(false)
+      setPosts([])
+      setAuthorByUserId({})
+      setLikeCounts({})
+      setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
+      setRethingCounts({})
+    }
+  }, [user?.id])
+
   async function fetchFeed() {
     const {
       data: { user: u },
     } = await supabase.auth.getUser()
     if (!u) return
+    if (isOnboardingFeedRef.current) {
+      setDirectoryRefreshKey((k) => k + 1)
+      return
+    }
     await fetchFeedForUser(u.id)
+  }
+
+  function goToMainFeed() {
+    if (!user?.id) return
+    if (typeof window !== 'undefined') sessionStorage.setItem(MAIN_FEED_STORAGE_KEY, '1')
+    setChoseMainFeed(true)
+    void fetchFeedForUser(user.id)
   }
 
   async function toggleBookmark(postId: string) {
@@ -453,15 +526,25 @@ export default function Home() {
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
+      setFollowingOtherCount(null)
+      setChoseMainFeed(false)
+      setFeedBootstrapped(true)
       void loadPublicPreviewPosts()
       return
     }
+    let cancelled = false
+    setFeedBootstrapped(false)
     const sessionUser = user
     void (async () => {
       await syncAvatarToProfile(sessionUser)
-      await fetchFeedForUser(sessionUser.id)
+      if (cancelled) return
+      await runHomeBootstrap(sessionUser.id)
+      if (!cancelled) setFeedBootstrapped(true)
     })()
-  }, [user, fetchFeedForUser, loadPublicPreviewPosts])
+    return () => {
+      cancelled = true
+    }
+  }, [user, runHomeBootstrap, loadPublicPreviewPosts])
 
   useEffect(() => {
     if (!user?.id) {
@@ -875,6 +958,19 @@ export default function Home() {
     setDeleteLoading(false)
   }
 
+  const showPeopleDirectory = Boolean(
+    user?.id &&
+      profile &&
+      feedBootstrapped &&
+      followingOtherCount !== null &&
+      (followingOtherCount === 0 || !choseMainFeed),
+  )
+  const showSignedInPostFeed = Boolean(user?.id && profile && feedBootstrapped && !showPeopleDirectory)
+
+  useEffect(() => {
+    isOnboardingFeedRef.current = showPeopleDirectory
+  }, [showPeopleDirectory])
+
   const avatarUrl =
     (profile?.avatar_url as string | undefined) || (user?.user_metadata?.avatar_url as string | undefined)
   const activeTypeButton = (type: ComposerType) => panel === type
@@ -1014,6 +1110,7 @@ export default function Home() {
         ) : null}
 
         {user && profile ? (
+          <>
           <section className="mb-10 overflow-hidden rounded-[4px] border border-[#dbdbdb] bg-white">
             <div className="flex items-center gap-3 px-3.5 py-3">
               {avatarUrl ? <img src={avatarUrl} alt="Your avatar" className="h-[34px] w-[34px] rounded-full border border-[#dbdbdb] object-cover" /> : <div className="h-[34px] w-[34px] rounded-full border border-[#dbdbdb] bg-zinc-100" />}
@@ -1501,19 +1598,42 @@ export default function Home() {
               </div>
             ) : null}
           </section>
+          {showPeopleDirectory ? (
+            <div className="mb-10">
+              {followingOtherCount !== null && followingOtherCount > 0 ? (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => goToMainFeed()}
+                    className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
+                  >
+                    Go to your feed →
+                  </button>
+                </div>
+              ) : null}
+              <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
+              <PeopleWhoLikeThingsDirectory
+                currentUserId={user.id}
+                refreshKey={directoryRefreshKey}
+                onFollowChanged={() => void refetchFollowingCount()}
+              />
+            </div>
+          ) : null}
+          </>
         ) : null}
 
         <section className="space-y-6">
           {!user && posts.length > 0 ? (
             <h2 className="text-sm font-medium text-zinc-600">Latest posts</h2>
           ) : null}
-          {user && posts.length === 0 ? (
+          {user && profile && showSignedInPostFeed && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">No posts yet. Follow someone or share something you like.</p>
           ) : null}
           {!user && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">Nothing posted yet. Sign in to share something you like.</p>
           ) : null}
-          {posts.map((post) => {
+          {(!user || showSignedInPostFeed) &&
+            posts.map((post) => {
             const author = post.user_id ? authorByUserId[post.user_id] : undefined
             return (
             <div key={post.id}>

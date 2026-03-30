@@ -10,11 +10,14 @@ export function FollowButton({
   followingId,
   profileUsername,
   oauthReturnTo,
+  onFollowChange,
 }: {
   followingId: string
   profileUsername: string
   /** Path after sign-in (e.g. `/whos-here`). Defaults to `/{profileUsername}`. */
   oauthReturnTo?: string
+  /** Called after a successful follow or unfollow (not on initial load). */
+  onFollowChange?: () => void
 }) {
   const [user, setUser] = useState<User | null>(null)
   const [following, setFollowing] = useState(false)
@@ -71,10 +74,14 @@ export function FollowButton({
     if (following) {
       await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', followingId)
       setFollowing(false)
+      onFollowChange?.()
     } else {
       const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: followingId })
       if (error) alert(error.message)
-      else setFollowing(true)
+      else {
+        setFollowing(true)
+        onFollowChange?.()
+      }
     }
     setBusy(false)
   }

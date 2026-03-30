@@ -1,4 +1,5 @@
 -- Notes: API route DELETE /api/account uses auth.admin.deleteUser (service role).
--- Ensure FKs from public tables to auth.users use ON DELETE CASCADE where you want
--- rows removed with the user (e.g. profiles.id, posts.user_id, follows, post_likes).
--- Supabase defaults vary; fix in Table Editor or with ALTER TABLE ... ON DELETE CASCADE.
+-- Set SUPABASE_SERVICE_ROLE_KEY in .env.local (see repo .env.example) and in production env.
+--
+-- If deletion returns "Database error deleting user", run account-delete-fk-cascade.sql
+-- in the SQL Editor (profiles / posts FKs to auth.users usually need ON DELETE CASCADE).

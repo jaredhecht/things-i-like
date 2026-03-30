@@ -12,6 +12,27 @@ function LightningIcon({ className }: { className?: string }) {
   )
 }
 
+/** People / Who's Here — matches dashboard icon asset (stroke). */
+function PeopleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="9" cy="7" r="4" />
+      <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      <path d="M21 21v-2a4 4 0 0 0-3-3.85" />
+    </svg>
+  )
+}
+
 export function UserNavMenu({
   username,
   avatarUrl,
@@ -48,6 +69,15 @@ export function UserNavMenu({
 
   return (
     <div className="flex items-center gap-0.5">
+      <Link
+        href="/whos-here"
+        className={`rounded-full p-2 transition-colors hover:bg-zinc-100 hover:text-zinc-700 ${
+          onWhosHere ? 'text-zinc-800' : 'text-zinc-400'
+        }`}
+        aria-label={"Who's Here?"}
+      >
+        <PeopleIcon className="h-5 w-5" />
+      </Link>
       <Link
         href="/notifications"
         className={`rounded-full p-2 transition-colors hover:bg-zinc-100 ${

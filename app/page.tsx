@@ -60,7 +60,8 @@ const IMAGE_MAX_BYTES = 8 * 1024 * 1024
 /** Signed-out home: at most one recent post per author, up to this many distinct authors. */
 const PUBLIC_PREVIEW_MAX_POSTS = 10
 const PUBLIC_PREVIEW_PAGE = 150
-const PUBLIC_PREVIEW_MAX_PAGES = 40
+/** Cap sequential post fetches for signed-out preview (each round trip is slow on mobile / cold start). */
+const PUBLIC_PREVIEW_MAX_PAGES = 10
 const PROFILE_IN_CHUNK = 100
 /** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
 const SIGNED_IN_FEED_LIMIT = 150

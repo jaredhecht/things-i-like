@@ -206,12 +206,21 @@ export default function SettingsPage() {
       const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
       if (!res.ok) {
         const base = body.error || 'Could not delete account.'
-        const hint =
-          body.code === 'missing_service_role' || /SUPABASE_SERVICE_ROLE_KEY|not configured/i.test(base)
-            ? '\n\nFor local dev: add the service role key to .env.local (see .env.example). For production: add it in your host’s environment variables. Key is under Supabase → Project Settings → API.'
-            : body.code === 'fk_blocked' || /Database error deleting user/i.test(base)
-              ? '\n\nPostgres is blocking the delete: a table still references auth.users without ON DELETE CASCADE. In Supabase → SQL Editor, run supabase/account-delete-fk-cascade.sql (see comments there if posts reference profiles instead of auth.users).'
-              : ''
+        const dev = process.env.NODE_ENV === 'development'
+        let hint = ''
+        if (dev) {
+          if (body.code === 'missing_service_role' || /SUPABASE_SERVICE_ROLE_KEY|not configured/i.test(base)) {
+            hint =
+              '\n\nAdd SUPABASE_SERVICE_ROLE_KEY to .env.local (see .env.example) or your host env; redeploy. Key: Supabase → Project Settings → API (service_role).'
+          } else if (body.code === 'fk_blocked' || /Database error deleting user/i.test(base)) {
+            hint =
+              '\n\nRun supabase/account-delete-fk-cascade.sql in the Supabase SQL Editor (FKs to auth.users need ON DELETE CASCADE).'
+          }
+        } else if (body.code === 'missing_service_role' || /not configured/i.test(base)) {
+          hint = '\n\nThis action is temporarily unavailable. Please try again later.'
+        } else if (body.code === 'fk_blocked' || /Database error deleting user/i.test(base)) {
+          hint = '\n\nPlease try again or contact support if this continues.'
+        }
         alert(`${base}${hint}`)
         return
       }
@@ -405,11 +414,6 @@ export default function SettingsPage() {
           >
             Delete account
           </button>
-          <p className="mt-3 text-xs text-zinc-400">
-            If delete fails with a configuration error, add{' '}
-            <code className="rounded bg-zinc-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code> to the server env (see{' '}
-            <code className="rounded bg-zinc-100 px-1">.env.example</code>) and restart the dev server or redeploy.
-          </p>
         </section>
 
         {profile ? (

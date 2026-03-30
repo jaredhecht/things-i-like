@@ -8,6 +8,7 @@ import { ComposerModuleChips } from '../src/components/ComposerModuleChips'
 import { InlinePostEditor } from '../src/components/InlinePostEditor'
 import { PostCard } from '../src/components/PostCard'
 import { RichTextEditor } from '../src/components/RichTextEditor'
+import { HomeLegalFooter } from '../src/components/HomeLegalFooter'
 import { PeopleWhoLikeThingsDirectory } from '../src/components/PeopleWhoLikeThingsDirectory'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
@@ -1709,6 +1710,8 @@ export default function Home() {
             )
           })}
         </section>
+
+        <HomeLegalFooter />
       </div>
 
       <PostModulesSheet

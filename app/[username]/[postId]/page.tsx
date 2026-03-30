@@ -18,9 +18,13 @@ export async function generateMetadata({
   params: Promise<{ username: string; postId: string }>
 }): Promise<Metadata> {
   const { username: raw, postId } = await params
-  if (!isPublicPostIdParam(postId)) return { title: 'Post · Things I Like' }
+  if (!isPublicPostIdParam(postId)) {
+    return { title: 'Post · Things I Like', openGraph: { siteName: 'Things I Like' }, twitter: { card: 'summary_large_image' } }
+  }
   const slug = decodeURIComponent(raw).toLowerCase()
-  if (RESERVED.has(slug)) return { title: 'Post · Things I Like' }
+  if (RESERVED.has(slug)) {
+    return { title: 'Post · Things I Like', openGraph: { siteName: 'Things I Like' }, twitter: { card: 'summary_large_image' } }
+  }
 
   const supabase = createSupabaseServer()
   const { data: profile } = await supabase
@@ -29,7 +33,9 @@ export async function generateMetadata({
     .eq('username', slug)
     .maybeSingle()
 
-  if (!profile) return { title: 'Post · Things I Like' }
+  if (!profile) {
+    return { title: 'Post · Things I Like', openGraph: { siteName: 'Things I Like' }, twitter: { card: 'summary_large_image' } }
+  }
 
   const { data: post } = await supabase
     .from('posts')
@@ -40,7 +46,16 @@ export async function generateMetadata({
 
   const handle = profile.username as string
   if (!post) {
-    return { title: `Post · @${handle}` }
+    return {
+      title: `Post · @${handle}`,
+      openGraph: {
+        title: `Post · @${handle}`,
+        siteName: 'Things I Like',
+        type: 'article',
+        url: `/${slug}/${postId}`,
+      },
+      twitter: { card: 'summary_large_image', title: `Post · @${handle}` },
+    }
   }
 
   const titleHint =
@@ -49,9 +64,23 @@ export async function generateMetadata({
     `${post.type} · @${handle}`
 
   const name = (typeof profile.display_name === 'string' && profile.display_name.trim()) || `@${handle}`
+  const pageTitle = `${titleHint} — ${name}`
+  const desc = `A post by ${name} on Things I Like.`
   return {
-    title: `${titleHint} — ${name}`,
-    description: `A post by ${name} on Things I Like.`,
+    title: pageTitle,
+    description: desc,
+    openGraph: {
+      title: pageTitle,
+      description: desc,
+      url: `/${slug}/${postId}`,
+      siteName: 'Things I Like',
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: pageTitle,
+      description: desc,
+    },
   }
 }
 

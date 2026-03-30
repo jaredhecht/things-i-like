@@ -21,6 +21,15 @@ export const metadata: Metadata = {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     apple: "/til-icon-large.svg",
   },
+  openGraph: {
+    siteName: "Things I Like",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Things I Like",
+    description: "Share things you like.",
+  },
 };
 
 export default function RootLayout({

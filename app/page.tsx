@@ -25,7 +25,8 @@ import {
   type LinkPreview,
   type Post,
 } from '../src/lib/post-helpers'
-import { fetchAllPostsForAuthorIds } from '../src/lib/posts-batched'
+import { fetchRecentPostsForAuthorIds } from '../src/lib/posts-batched'
+import { fetchEngagementForPostIds } from '../src/lib/engagement-client'
 import { PostModulesSheet } from '../src/components/PostModulesSheet'
 import { classifyPostAfterSave } from '../src/lib/modules-ui'
 import type { ProfileModuleRow } from '../src/lib/modules-ui'
@@ -60,6 +61,8 @@ const PUBLIC_PREVIEW_MAX_POSTS = 10
 const PUBLIC_PREVIEW_PAGE = 150
 const PUBLIC_PREVIEW_MAX_PAGES = 40
 const PROFILE_IN_CHUNK = 100
+/** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
+const SIGNED_IN_FEED_LIMIT = 150
 
 export default function Home() {
   const router = useRouter()
@@ -230,20 +233,11 @@ export default function Home() {
       return
     }
     const ids = list.map((p) => p.id)
-    const countByPost: Record<string, number> = {}
-    const my = new Set<string>()
-    const bookmarks = new Set<string>()
-    const chunk = 500
-    for (let i = 0; i < ids.length; i += chunk) {
-      const slice = ids.slice(i, i + chunk)
-      const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', slice)
-      for (const row of likesRows || []) {
-        countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
-        if (row.user_id === userId) my.add(row.post_id)
-      }
-      const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', userId).in('post_id', slice)
-      for (const row of bmRows || []) bookmarks.add(row.post_id as string)
-    }
+    const { likeCounts: countByPost, likedPostIds: my, bookmarkedPostIds: bookmarks } = await fetchEngagementForPostIds(
+      supabase,
+      userId,
+      ids,
+    )
     const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(my)
@@ -320,7 +314,7 @@ export default function Home() {
       const authorIds = [...new Set([userId, ...followingIds])]
       let list: Post[] = []
       try {
-        list = await fetchAllPostsForAuthorIds(supabase, authorIds)
+        list = await fetchRecentPostsForAuthorIds(supabase, authorIds, SIGNED_IN_FEED_LIMIT)
       } catch (error) {
         console.error('Error fetching feed:', error)
       }

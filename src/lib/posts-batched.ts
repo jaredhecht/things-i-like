@@ -43,6 +43,37 @@ export async function fetchAllPostsForAuthorIds(supabase: SupabaseClient, author
   return all
 }
 
+/** Most recent posts across the given authors (feed). Bounded — avoids loading entire history client-side. */
+export async function fetchRecentPostsForAuthorIds(
+  supabase: SupabaseClient,
+  authorIds: string[],
+  limit: number,
+): Promise<Post[]> {
+  if (authorIds.length === 0 || limit <= 0) return []
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .in('user_id', authorIds)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return (data || []) as Post[]
+}
+
+/** Recent posts with a given tag (public / tag pages). */
+export async function fetchRecentPostsWithTag(supabase: SupabaseClient, tag: string, limit: number): Promise<Post[]> {
+  const slug = tag.trim().toLowerCase()
+  if (!slug || limit <= 0) return []
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .contains('tags', [slug])
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return (data || []) as Post[]
+}
+
 /** Posts that include `tag` in `tags` (normalized slug). Requires `posts.tags` column + GIN index (see supabase/post-tags.sql). */
 export async function fetchAllPostsWithTag(supabase: SupabaseClient, tag: string): Promise<Post[]> {
   const slug = tag.trim().toLowerCase()

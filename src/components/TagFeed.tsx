@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { PostCard } from '@/src/components/PostCard'
 import { UserNavMenu } from '@/src/components/UserNavMenu'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchEngagementForPostIds } from '@/src/lib/engagement-client'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 import { supabase } from '@/src/lib/supabase'
 
@@ -49,20 +50,11 @@ export function TagFeed({
       return
     }
     const ids = list.map((p) => p.id)
-    const countByPost: Record<string, number> = {}
-    const my = new Set<string>()
-    const bookmarks = new Set<string>()
-    const chunk = 500
-    for (let i = 0; i < ids.length; i += chunk) {
-      const slice = ids.slice(i, i + chunk)
-      const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', slice)
-      for (const row of likesRows || []) {
-        countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
-        if (row.user_id === userId) my.add(row.post_id)
-      }
-      const { data: bmRows } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', userId).in('post_id', slice)
-      for (const row of bmRows || []) bookmarks.add(row.post_id as string)
-    }
+    const { likeCounts: countByPost, likedPostIds: my, bookmarkedPostIds: bookmarks } = await fetchEngagementForPostIds(
+      supabase,
+      userId,
+      ids,
+    )
     const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(my)

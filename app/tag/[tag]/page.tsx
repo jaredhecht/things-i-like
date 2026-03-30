@@ -1,11 +1,13 @@
 import { notFound } from 'next/navigation'
 import { TagFeed } from '@/src/components/TagFeed'
 import { normalizeTagSlug } from '@/src/lib/post-tags'
-import { fetchAllPostsWithTag } from '@/src/lib/posts-batched'
+import { fetchRecentPostsWithTag } from '@/src/lib/posts-batched'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import type { Post } from '@/src/lib/post-helpers'
 
 export const dynamic = 'force-dynamic'
+
+const TAG_PAGE_POST_LIMIT = 300
 
 type AuthorMeta = {
   username: string
@@ -21,7 +23,7 @@ export default async function TagPage({ params }: { params: Promise<{ tag: strin
   const supabase = createSupabaseServer()
   let list: Post[] = []
   try {
-    list = await fetchAllPostsWithTag(supabase, slug)
+    list = await fetchRecentPostsWithTag(supabase, slug, TAG_PAGE_POST_LIMIT)
   } catch (e) {
     console.error('[tag] posts query failed:', slug, e)
   }

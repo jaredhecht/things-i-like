@@ -7,6 +7,7 @@ import { PostCard } from '@/src/components/PostCard'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
+import { fetchEngagementForPostIds } from '@/src/lib/engagement-client'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 
 type AuthorMeta = {
@@ -92,17 +93,7 @@ export default function BookmarksPage() {
     setPosts(list)
     setAuthorByUserId(map)
 
-    const countByPost: Record<string, number> = {}
-    const myLiked = new Set<string>()
-    const chunk = 500
-    for (let i = 0; i < ids.length; i += chunk) {
-      const slice = ids.slice(i, i + chunk)
-      const { data: likesRows } = await supabase.from('post_likes').select('post_id, user_id').in('post_id', slice)
-      for (const row of likesRows || []) {
-        countByPost[row.post_id] = (countByPost[row.post_id] || 0) + 1
-        if (row.user_id === u.id) myLiked.add(row.post_id)
-      }
-    }
+    const { likeCounts: countByPost, likedPostIds: myLiked } = await fetchEngagementForPostIds(supabase, u.id, ids)
     const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(myLiked)

@@ -64,6 +64,9 @@ const PUBLIC_PREVIEW_MAX_PAGES = 40
 const PROFILE_IN_CHUNK = 100
 /** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
 const SIGNED_IN_FEED_LIMIT = 150
+/** localStorage: `onboarding` = stay on People Who Like Things until user taps Show Me The Things; `feed` = normal home feed. Missing = treat as feed (returning users). */
+const HOME_FEED_GATE_KEY = 'til_home_feed_gate'
+
 export default function Home() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -116,6 +119,8 @@ export default function Home() {
   const imageFileInputRef = useRef<HTMLInputElement>(null)
   const isOnboardingFeedRef = useRef(false)
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
+  /** True while showing People Who Like Things (0 follows, or following ≥1 but still in onboarding gate). */
+  const [homeDirectoryActive, setHomeDirectoryActive] = useState(false)
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
 
@@ -221,6 +226,8 @@ export default function Home() {
   }
 
   async function signOut() {
+    if (typeof window !== 'undefined') localStorage.removeItem(HOME_FEED_GATE_KEY)
+    setHomeDirectoryActive(false)
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
@@ -353,9 +360,21 @@ export default function Home() {
         setRethingCounts({})
       }
       if (n === 0) {
+        if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'onboarding')
+        setHomeDirectoryActive(true)
         clearSignedInFeed()
         return
       }
+      const gate = typeof window !== 'undefined' ? localStorage.getItem(HOME_FEED_GATE_KEY) : null
+      if (gate === 'onboarding') {
+        setHomeDirectoryActive(true)
+        clearSignedInFeed()
+        return
+      }
+      if (typeof window !== 'undefined' && gate === null) {
+        localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
+      }
+      setHomeDirectoryActive(false)
       await fetchFeedForUser(userId)
     },
     [fetchFeedForUser],
@@ -370,17 +389,40 @@ export default function Home() {
     }
     const n = (data || []).length
     setFollowingOtherCount(n)
-    if (n === 0) {
+    const clearSignedInFeed = () => {
       setPosts([])
       setAuthorByUserId({})
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
-    } else {
-      await fetchFeedForUser(user.id)
     }
+    if (n === 0) {
+      if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'onboarding')
+      setHomeDirectoryActive(true)
+      clearSignedInFeed()
+      return
+    }
+    const gate = typeof window !== 'undefined' ? localStorage.getItem(HOME_FEED_GATE_KEY) : null
+    if (gate === 'onboarding') {
+      setHomeDirectoryActive(true)
+      clearSignedInFeed()
+      setDirectoryRefreshKey((k) => k + 1)
+      return
+    }
+    if (typeof window !== 'undefined' && gate === null) {
+      localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
+    }
+    setHomeDirectoryActive(false)
+    await fetchFeedForUser(user.id)
   }, [user?.id, fetchFeedForUser])
+
+  function showMeTheThings() {
+    if (!user?.id) return
+    if (typeof window !== 'undefined') localStorage.setItem(HOME_FEED_GATE_KEY, 'feed')
+    setHomeDirectoryActive(false)
+    void fetchFeedForUser(user.id)
+  }
 
   async function fetchFeed() {
     const {
@@ -506,6 +548,7 @@ export default function Home() {
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
+      setHomeDirectoryActive(false)
       setFeedBootstrapped(true)
       void loadPublicPreviewPosts()
       return
@@ -937,11 +980,7 @@ export default function Home() {
   }
 
   const showPeopleDirectory = Boolean(
-    user?.id &&
-      profile &&
-      feedBootstrapped &&
-      followingOtherCount !== null &&
-      followingOtherCount === 0,
+    user?.id && profile && feedBootstrapped && followingOtherCount !== null && homeDirectoryActive,
   )
   const showSignedInPostFeed = Boolean(user?.id && profile && feedBootstrapped && !showPeopleDirectory)
 
@@ -1052,9 +1091,11 @@ export default function Home() {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-2xl px-4 py-10">
-        <header className="mb-8 flex items-center justify-between">
-          <h1 className="text-3xl font-light tracking-tight text-zinc-900">Things I Like</h1>
+      <div className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
+        <header className="mb-5 flex items-center justify-between gap-3 sm:mb-8">
+          <h1 className="min-w-0 text-xl font-light leading-snug tracking-tight text-zinc-900 sm:text-2xl md:text-3xl">
+            Things I Like
+          </h1>
           {user ? (
             <UserNavMenu
               username={profile?.username ?? null}
@@ -1578,6 +1619,17 @@ export default function Home() {
           </section>
           {showPeopleDirectory ? (
             <div className="mb-10">
+              {followingOtherCount !== null && followingOtherCount > 0 ? (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => showMeTheThings()}
+                    className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
+                  >
+                    Show Me The Things →
+                  </button>
+                </div>
+              ) : null}
               <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
               <PeopleWhoLikeThingsDirectory
                 currentUserId={user.id}

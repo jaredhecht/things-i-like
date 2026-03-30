@@ -245,12 +245,11 @@ export default function Home() {
       return
     }
     const ids = list.map((p) => p.id)
-    const { likeCounts: countByPost, likedPostIds: my, bookmarkedPostIds: bookmarks } = await fetchEngagementForPostIds(
-      supabase,
-      userId,
-      ids,
-    )
-    const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
+    const [{ likeCounts: countByPost, likedPostIds: my, bookmarkedPostIds: bookmarks }, rethingByPost] =
+      await Promise.all([
+        fetchEngagementForPostIds(supabase, userId, ids),
+        fetchRethingCountsForPostIds(supabase, ids),
+      ])
     setLikeCounts(countByPost)
     setLikedPostIds(my)
     setBookmarkedPostIds(bookmarks)
@@ -324,13 +323,13 @@ export default function Home() {
       if (followErr) console.error('Error fetching follows:', followErr)
       const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
       const authorIds = [...new Set([userId, ...followingIds])]
-      let list: Post[] = []
-      try {
-        list = await fetchRecentPostsForAuthorIds(supabase, authorIds, SIGNED_IN_FEED_LIMIT)
-      } catch (error) {
-        console.error('Error fetching feed:', error)
-      }
-      const { data: profs } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', authorIds)
+      const [list, { data: profs }] = await Promise.all([
+        fetchRecentPostsForAuthorIds(supabase, authorIds, SIGNED_IN_FEED_LIMIT).catch((error) => {
+          console.error('Error fetching feed:', error)
+          return [] as Post[]
+        }),
+        supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', authorIds),
+      ])
       const map: Record<string, AuthorMeta> = {}
       for (const p of profs || []) {
         map[p.id] = {

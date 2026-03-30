@@ -64,9 +64,6 @@ const PUBLIC_PREVIEW_MAX_PAGES = 40
 const PROFILE_IN_CHUNK = 100
 /** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
 const SIGNED_IN_FEED_LIMIT = 150
-/** sessionStorage: user chose main feed while still in follow-someone onboarding (cleared when follow count hits 0). */
-const MAIN_FEED_STORAGE_KEY = 'til_onboarding_main_feed'
-
 export default function Home() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -119,7 +116,6 @@ export default function Home() {
   const imageFileInputRef = useRef<HTMLInputElement>(null)
   const isOnboardingFeedRef = useRef(false)
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
-  const [choseMainFeed, setChoseMainFeed] = useState(false)
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
 
@@ -225,7 +221,6 @@ export default function Home() {
   }
 
   async function signOut() {
-    if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
@@ -358,19 +353,10 @@ export default function Home() {
         setRethingCounts({})
       }
       if (n === 0) {
-        if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
-        setChoseMainFeed(false)
         clearSignedInFeed()
         return
       }
-      const wantsMain =
-        typeof window !== 'undefined' && sessionStorage.getItem(MAIN_FEED_STORAGE_KEY) === '1'
-      setChoseMainFeed(wantsMain)
-      if (wantsMain) {
-        await fetchFeedForUser(userId)
-      } else {
-        clearSignedInFeed()
-      }
+      await fetchFeedForUser(userId)
     },
     [fetchFeedForUser],
   )
@@ -385,16 +371,16 @@ export default function Home() {
     const n = (data || []).length
     setFollowingOtherCount(n)
     if (n === 0) {
-      if (typeof window !== 'undefined') sessionStorage.removeItem(MAIN_FEED_STORAGE_KEY)
-      setChoseMainFeed(false)
       setPosts([])
       setAuthorByUserId({})
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
+    } else {
+      await fetchFeedForUser(user.id)
     }
-  }, [user?.id])
+  }, [user?.id, fetchFeedForUser])
 
   async function fetchFeed() {
     const {
@@ -406,13 +392,6 @@ export default function Home() {
       return
     }
     await fetchFeedForUser(u.id)
-  }
-
-  function goToMainFeed() {
-    if (!user?.id) return
-    if (typeof window !== 'undefined') sessionStorage.setItem(MAIN_FEED_STORAGE_KEY, '1')
-    setChoseMainFeed(true)
-    void fetchFeedForUser(user.id)
   }
 
   async function toggleBookmark(postId: string) {
@@ -527,7 +506,6 @@ export default function Home() {
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
-      setChoseMainFeed(false)
       setFeedBootstrapped(true)
       void loadPublicPreviewPosts()
       return
@@ -963,7 +941,7 @@ export default function Home() {
       profile &&
       feedBootstrapped &&
       followingOtherCount !== null &&
-      (followingOtherCount === 0 || !choseMainFeed),
+      followingOtherCount === 0,
   )
   const showSignedInPostFeed = Boolean(user?.id && profile && feedBootstrapped && !showPeopleDirectory)
 
@@ -1600,17 +1578,6 @@ export default function Home() {
           </section>
           {showPeopleDirectory ? (
             <div className="mb-10">
-              {followingOtherCount !== null && followingOtherCount > 0 ? (
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    onClick={() => goToMainFeed()}
-                    className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900"
-                  >
-                    Go to your feed →
-                  </button>
-                </div>
-              ) : null}
               <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
               <PeopleWhoLikeThingsDirectory
                 currentUserId={user.id}

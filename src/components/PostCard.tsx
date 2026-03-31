@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { linkifyAtMentionsInHtml } from '@/src/lib/linkify-mentions'
+import { fetchLinkPreviewClient } from '@/src/lib/link-preview-client'
+import { sanitizeRichHtml } from '@/src/lib/sanitize-rich-html'
 import {
   extractFirstSoundCloudUrl,
   getHostnameLabel,
@@ -167,8 +169,15 @@ export function PostCard({
       : null
   const showShare = Boolean(shareEl)
   const postDate = new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  const htmlBody = useMemo(() => linkifyAtMentionsInHtml(post.content || ''), [post.content])
-  const htmlCaption = useMemo(() => linkifyAtMentionsInHtml(post.caption || ''), [post.caption])
+  const htmlBody = useMemo(() => {
+    const raw = post.content || ''
+    const safe = post.type === 'text' ? sanitizeRichHtml(raw) : raw
+    return linkifyAtMentionsInHtml(safe)
+  }, [post.type, post.content])
+  const htmlCaption = useMemo(() => {
+    const raw = post.caption || ''
+    return linkifyAtMentionsInHtml(sanitizeRichHtml(raw))
+  }, [post.caption])
   const soundCloudInText = useMemo(
     () => (post.type === 'text' && post.content ? extractFirstSoundCloudUrl(post.content) : null),
     [post.type, post.content],
@@ -227,26 +236,16 @@ export function PostCard({
 
   useEffect(() => {
     if (post.type !== 'article' || !post.content || liveLinkPreview?.title || !isValidHttpUrl(post.content)) return
-    const controller = new AbortController()
+    let cancelled = false
     const loadPreview = async () => {
-      try {
-        const response = await fetch(`/api/link-preview?url=${encodeURIComponent(post.content || '')}`, { signal: controller.signal })
-        if (!response.ok) return
-        const data = await response.json()
-        if (controller.signal.aborted) return
-        setLiveLinkPreview({
-          url: typeof data.url === 'string' ? data.url : post.content || '',
-          siteName: typeof data.siteName === 'string' ? data.siteName : '',
-          title: typeof data.title === 'string' ? data.title : '',
-          description: typeof data.description === 'string' ? data.description : '',
-          image: typeof data.image === 'string' ? data.image : '',
-        })
-      } catch {
-        // Keep fallback rendering if preview request fails.
-      }
+      const preview = await fetchLinkPreviewClient(post.content || '')
+      if (cancelled || !preview) return
+      setLiveLinkPreview(preview)
     }
     void loadPreview()
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+    }
   }, [liveLinkPreview?.title, post.content, post.type])
 
   const postTags = useMemo(() => parsePostTags(post.tags), [post.tags])

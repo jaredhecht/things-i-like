@@ -14,6 +14,7 @@ import {
   stripHtml,
   type Post,
 } from '@/src/lib/post-helpers'
+import { sanitizeRichHtml } from '@/src/lib/sanitize-rich-html'
 import { parsePostTags, tagsFromComposerInputs } from '@/src/lib/post-tags'
 import { supabase } from '@/src/lib/supabase'
 
@@ -135,8 +136,9 @@ export function InlinePostEditor({
       metadata?: Record<string, unknown>
       tags: string[]
     } = {
-      content: contentFromDom,
-      caption: stripHtml(captionFromDom).length ? captionFromDom : null,
+      content:
+        post.type === 'text' || post.type === 'quote' ? sanitizeRichHtml(contentFromDom) : contentFromDom,
+      caption: stripHtml(captionFromDom).length ? sanitizeRichHtml(captionFromDom) : null,
       tags: tagsFromComposerInputs(editingTag0, editingTag1),
     }
 

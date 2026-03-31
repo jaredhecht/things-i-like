@@ -1,6 +1,6 @@
 import { isValidHttpUrl, type LinkPreview } from '@/src/lib/post-helpers'
 
-/** Client-side fetch for `/api/link-preview` (used by home composer and inline post editor). */
+/** Client-side fetch for `/api/link-preview` (works for signed-out readers too). */
 export async function fetchLinkPreviewClient(url: string): Promise<LinkPreview | null> {
   if (!isValidHttpUrl(url)) return null
   try {

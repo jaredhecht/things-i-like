@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server'
+import { isSafePublicHttpUrl } from '@/src/lib/preview-url-safety'
+
+export const runtime = 'nodejs'
+
+const MAX_PREVIEW_BYTES = 512 * 1024
 
 type LinkPreview = {
   url: string
@@ -36,6 +41,12 @@ function absolutize(baseUrl: string, maybeRelative: string): string {
   }
 }
 
+async function readHtmlWithCap(response: Response, maxBytes: number): Promise<string> {
+  const buf = await response.arrayBuffer()
+  const slice = buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf
+  return new TextDecoder('utf-8', { fatal: false }).decode(slice)
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const target = searchParams.get('url')
@@ -46,6 +57,10 @@ export async function GET(request: Request) {
     parsedUrl = new URL(target)
   } catch {
     return NextResponse.json({ error: 'Invalid url' }, { status: 400 })
+  }
+
+  if (!isSafePublicHttpUrl(parsedUrl)) {
+    return NextResponse.json({ error: 'URL not allowed' }, { status: 400 })
   }
 
   try {
@@ -64,10 +79,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Could not fetch URL' }, { status: 400 })
     }
 
-    const html = await response.text()
+    const html = await readHtmlWithCap(response, MAX_PREVIEW_BYTES)
     const siteName = pickMeta(html, 'og:site_name') || parsedUrl.hostname.replace('www.', '')
     const title = pickMeta(html, 'og:title') || pickMeta(html, 'twitter:title') || pickTitle(html)
-    const description = pickMeta(html, 'og:description') || pickMeta(html, 'twitter:description') || pickMeta(html, 'description')
+    const description =
+      pickMeta(html, 'og:description') || pickMeta(html, 'twitter:description') || pickMeta(html, 'description')
     const imageRaw =
       pickMeta(html, 'og:image:secure_url') ||
       pickMeta(html, 'og:image') ||

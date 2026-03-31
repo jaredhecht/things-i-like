@@ -33,6 +33,7 @@ import { PostModulesSheet } from '../src/components/PostModulesSheet'
 import { classifyPostAfterSave } from '../src/lib/modules-ui'
 import type { ProfileModuleRow } from '../src/lib/modules-ui'
 import { fetchLinkPreviewClient } from '../src/lib/link-preview-client'
+import { sanitizeRichHtml } from '../src/lib/sanitize-rich-html'
 import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { fetchRethingCountsForPostIds } from '../src/lib/rething-counts'
@@ -120,6 +121,7 @@ export default function Home() {
   const isOnboardingFeedRef = useRef(false)
   /** Latest signed-in user for callbacks that must not call `getUser()` (avoids auth lock races on startup). */
   const userRef = useRef<User | null>(null)
+  userRef.current = user
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
@@ -374,6 +376,13 @@ export default function Home() {
     [fetchFeedForUser],
   )
 
+  const loadPublicPreviewPostsRef = useRef(loadPublicPreviewPosts)
+  loadPublicPreviewPostsRef.current = loadPublicPreviewPosts
+  const runHomeBootstrapRef = useRef(runHomeBootstrap)
+  runHomeBootstrapRef.current = runHomeBootstrap
+  /** Last user id we started home bootstrap for; avoids setFeedBootstrapped(false) on spurious effect re-runs. */
+  const lastHomeBootstrapUidRef = useRef<string | null>(null)
+
   const refetchFollowingCount = useCallback(async () => {
     if (!user?.id) return
     const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', user.id)
@@ -475,7 +484,7 @@ export default function Home() {
         user_id: user.id,
         type: rethingSource.type,
         content: rethingSource.content,
-        caption: stripHtml(rethingCaption).length ? rethingCaption.trim() : null,
+        caption: stripHtml(rethingCaption).length ? sanitizeRichHtml(rethingCaption.trim()) : null,
         metadata,
         rething_of_post_id: rethingSource.id,
         rething_from_username: origAuthor,
@@ -501,47 +510,65 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) void loadProfile(currentUser.id)
-      if (!currentUser) {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
         setProfile(null)
         setNeedsUsername(false)
+        return
       }
+      if (event === 'INITIAL_SESSION') {
+        const u = session?.user ?? null
+        setUser(u)
+        if (u) void loadProfile(u.id)
+        else {
+          setProfile(null)
+          setNeedsUsername(false)
+        }
+        return
+      }
+      if (session?.user) {
+        setUser(session.user)
+        if (event !== 'TOKEN_REFRESHED') void loadProfile(session.user.id)
+      }
+      // TOKEN_REFRESHED: refresh user object only; do not clear user on null session; skip profile refetch
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  useEffect(() => {
-    userRef.current = user
-  }, [user])
-
+  // Only `user?.id` in deps: callback identities must not retrigger bootstrap. `userRef` supplies the latest
+  // User for avatar sync. `lastHomeBootstrapUidRef` avoids flipping feedBootstrapped off unless the account changed.
   useEffect(() => {
     if (!user?.id) {
+      lastHomeBootstrapUidRef.current = null
       setLikeCounts({})
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
       setFeedBootstrapped(true)
-      void loadPublicPreviewPosts()
+      void loadPublicPreviewPostsRef.current()
       return
     }
+    const uid = user.id
     let cancelled = false
-    setFeedBootstrapped(false)
-    const sessionUser = user
+    const sessionUser = userRef.current
+    if (!sessionUser || sessionUser.id !== uid) return
+    if (lastHomeBootstrapUidRef.current !== uid) {
+      setFeedBootstrapped(false)
+      lastHomeBootstrapUidRef.current = uid
+    }
     void (async () => {
       await syncAvatarToProfile(sessionUser)
       if (cancelled) return
-      await runHomeBootstrap(sessionUser.id)
+      await runHomeBootstrapRef.current(sessionUser.id)
       if (!cancelled) setFeedBootstrapped(true)
     })()
     return () => {
       cancelled = true
     }
-  }, [user, runHomeBootstrap, loadPublicPreviewPosts])
+  }, [user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -774,7 +801,7 @@ export default function Home() {
         }
       } else {
         type = 'text'
-        content = trimmed
+        content = sanitizeRichHtml(trimmed)
       }
     } else if (panel === 'quote') {
       type = 'quote'
@@ -826,7 +853,7 @@ export default function Home() {
       .insert({
         type,
         content,
-        caption: stripHtml(caption).length ? caption.trim() : null,
+        caption: stripHtml(caption).length ? sanitizeRichHtml(caption.trim()) : null,
         user_id: user.id,
         metadata,
         tags: tagList,
@@ -955,7 +982,13 @@ export default function Home() {
   const showPeopleDirectory = Boolean(
     user?.id && profile && feedBootstrapped && followingOtherCount !== null && followingOtherCount === 0,
   )
-  const showSignedInPostFeed = Boolean(user?.id && profile && feedBootstrapped && !showPeopleDirectory)
+  // If we already have rows, always show them — do not require feedBootstrapped (it can flicker false during auth churn).
+  const showSignedInPostFeed = Boolean(
+    user?.id &&
+      !showPeopleDirectory &&
+      (posts.length > 0 ||
+        (feedBootstrapped && (profile != null || followingOtherCount !== null))),
+  )
 
   useEffect(() => {
     isOnboardingFeedRef.current = showPeopleDirectory
@@ -1607,7 +1640,7 @@ export default function Home() {
           {!user && posts.length > 0 ? (
             <h2 className="text-sm font-medium text-zinc-600">Latest posts</h2>
           ) : null}
-          {user && profile && showSignedInPostFeed && posts.length === 0 ? (
+          {user && profile && feedBootstrapped && !showPeopleDirectory && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">No posts yet. Follow someone or share something you like.</p>
           ) : null}
           {!user && posts.length === 0 ? (

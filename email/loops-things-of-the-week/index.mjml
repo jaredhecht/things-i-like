@@ -177,9 +177,10 @@
             </td>
           </tr>
         </mj-table>
+        <!-- Alternate art URL: https://www.warhol.org/wp-content/uploads/2015/05/1998-1-1350_int_01_1500px1.jpg -->
         <mj-image
-          src="https://thingsilike.app/ilikethings/5a118d6d-74e4-4ff9-8523-e118e0d86ef4/opengraph-image"
-          alt=""
+          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1a219d85-d60f-43bd-bd6b-c768fedaaf14/1774896414570-jr82g67r.jpeg"
+          alt="Andy Warhol, Champagne Cocktail"
           href="https://thingsilike.app/ilikethings/5a118d6d-74e4-4ff9-8523-e118e0d86ef4"
           border-radius="6px"
           padding="0 0 16px 0"
@@ -221,15 +222,15 @@
       </mj-column>
     </mj-section>
 
-    <!-- 5 @tdevane -->
+    <!-- 5 @tdevane — link-preview style (hero flush to card edges) -->
     <mj-section padding="8px 16px 8px">
-      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="20px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="0">
         <mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation">
           <tr>
-            <td style="padding:0 8px 12px 0;vertical-align:top;text-align:left;width:50%;">
+            <td style="padding:16px 8px 12px 20px;vertical-align:top;text-align:left;width:50%;">
               <span style="color:#a1a1aa;font-size:11px;font-weight:400;letter-spacing:0.16em;text-transform:uppercase;">article</span>
             </td>
-            <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
+            <td style="padding:16px 20px 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/tdevane" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/avatar/1774989008897-4s2oiy.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;object-fit:cover;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@tdevane</span>
@@ -239,18 +240,20 @@
         </mj-table>
         <mj-image
           src="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b/opengraph-image"
-          alt=""
+          alt="Live Near Friends"
           href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b"
-          border-radius="6px"
-          padding="0 0 16px 0"
+          border-radius="0"
+          padding="0"
           width="520px"
         />
-        <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
-          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b">amazing concept</a>
+        <mj-text padding="16px 20px 4px 20px" font-size="11px" font-weight="600" letter-spacing="0.08em" text-transform="uppercase" color="#a1a1aa">
+          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#a1a1aa;text-decoration:none;">Live Near Friends</a>
         </mj-text>
-        <!-- ARTICLE_POST_CAPTION — optional: replace with the post’s caption from Things I Like, or delete this <mj-text> block. -->
-        <mj-text padding="10px 0 0 0" font-size="14px" line-height="1.55" color="#71717a">
-          Optional: paste article caption from the app here.
+        <mj-text padding="0 20px 6px 20px" font-size="16px" font-weight="600" line-height="1.35" color="#18181b">
+          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#18181b;text-decoration:none;">Live Near Friends</a>
+        </mj-text>
+        <mj-text padding="0 20px 20px 20px" font-size="14px" line-height="1.5" color="#71717a">
+          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#71717a;text-decoration:none;">Buy or build homes next door to friends &amp; family. Make the fantasy into a reality.</a>
         </mj-text>
       </mj-column>
     </mj-section>
@@ -282,9 +285,12 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/emmacooper/4e984f40-e144-4461-b368-e7c078f26dda">“Heavily produced” by Brian Wilson — a 1972 album we’d love to hear in full</a>
         </mj-text>
-        <!-- EMMA_SPOTIFY_CAPTION — paste Emma’s caption / commentary from the post on Things I Like (the gray text under the embed). -->
         <mj-text padding="10px 0 0 0" font-size="14px" line-height="1.55" color="#71717a">
-          Paste caption from the app here (replace this sentence).
+          &ldquo;Heavily produced&rdquo; by Brian Wilson, this 1972 album was recorded by sister duo Diane Rovell and Marilyn Wilson (Brian&rsquo;s then wife) and former members of the girl group The Honeys. This is the only song on Spotify but I would love to get my hands on this whole album.
+        </mj-text>
+        <mj-text padding="12px 0 0 0" font-size="12px" line-height="1.5">
+          <a href="https://thingsilike.app/tag/american-spring" class="tag-pill">#american-spring</a>
+          <a href="https://thingsilike.app/tag/brian-wilson" class="tag-pill">#brian-wilson</a>
         </mj-text>
       </mj-column>
     </mj-section>
@@ -299,22 +305,19 @@
     </mj-section>
     <mj-section padding="0 16px 24px" background-color="#fafafa">
       <mj-column padding="0" background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7">
-        <mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation">
-          <tr>
-            <td style="width:72px;vertical-align:middle;padding:20px 0 0 20px;">
-              <a href="https://thingsilike.app/emmacooper" target="_blank" style="text-decoration:none;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocIGSg3XxMdcZfupzM3reyCzLXsjDAs-tosrZzINVKkY2bt0aGAIUA=s96-c" width="56" height="56" alt="" style="display:block;border-radius:28px;border:1px solid #e4e4e7;width:56px;height:56px;" />
-              </a>
-            </td>
-            <td style="vertical-align:middle;padding:20px 20px 0 8px;text-align:left;">
-              <a href="https://thingsilike.app/emmacooper" style="color:#18181b;text-decoration:none;font-size:18px;font-weight:700;line-height:1.3;vertical-align:middle;">@emmacooper</a>
-              <span style="display:inline-block;width:12px;font-size:0;line-height:0;">&nbsp;</span>
-              <a href="https://thingsilike.app/emmacooper" target="_blank" style="display:inline-block;vertical-align:middle;background:#18181b;color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:600;line-height:1.2;text-decoration:none;padding:12px 24px;border-radius:9999px;">Follow</a>
-            </td>
-          </tr>
-        </mj-table>
+        <mj-text align="center" padding="24px 20px 12px 20px">
+          <a href="https://thingsilike.app/emmacooper" target="_blank" style="text-decoration:none;">
+            <img src="https://lh3.googleusercontent.com/a/ACg8ocIGSg3XxMdcZfupzM3reyCzLXsjDAs-tosrZzINVKkY2bt0aGAIUA=s96-c" width="56" height="56" alt="" style="display:inline-block;border-radius:28px;border:1px solid #e4e4e7;width:56px;height:56px;" />
+          </a>
+        </mj-text>
+        <mj-text align="center" padding="0 20px 14px 20px">
+          <a href="https://thingsilike.app/emmacooper" style="color:#18181b;text-decoration:none;font-size:18px;font-weight:700;line-height:1.3;">@emmacooper</a>
+        </mj-text>
+        <mj-button href="https://thingsilike.app/emmacooper" align="center" padding="0 20px 8px 20px" inner-padding="12px 24px">
+          Follow
+        </mj-button>
         <!-- PERSON_OF_THE_WEEK_BIO — edit below; add another <mj-text> after this one for a second paragraph -->
-        <mj-text padding="16px 20px 20px 20px" color="#52525b" font-size="15px" line-height="1.55">
+        <mj-text align="left" padding="16px 20px 20px 20px" color="#52525b" font-size="15px" line-height="1.55">
           Emma was an OG tumblr user. A conversation with her at a party two weeks ago about the good ol’ days of the internet inspired me to hack this project together. She posts great things.
         </mj-text>
       </mj-column>

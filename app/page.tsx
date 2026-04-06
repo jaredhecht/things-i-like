@@ -1470,7 +1470,7 @@ export default function Home() {
                               }}
                               className="mt-2 text-xs font-semibold text-zinc-700 underline decoration-zinc-400 hover:text-zinc-900 disabled:opacity-40"
                             >
-                              {placeGooglePhotoLoading ? 'Adding photo…' : 'Use Google cover photo (saved to your storage)'}
+                              {placeGooglePhotoLoading ? 'Adding photo…' : 'Use Google cover photo'}
                             </button>
                           ) : null}
                         </div>

@@ -10,7 +10,11 @@
       (direct .jpg/.png from the post, Supabase public URL, or …/opengraph-image). If images look blank in a
       browser, open the file via a local server (e.g. `npx serve email/loops-things-of-the-week`) — some clients
       block hotlinking when using file://.
-    • Post author row: same block — edit the <mj-table> row: profile link, `img src` (avatar), and @handle text.
+    • Post author row: same block — edit the <mj-table> row: profile link, `img src` (avatar), and @handle text (@handles are normal weight).
+    • Images: set <mj-image src="https://…" /> to any public URL (Supabase post-images, opengraph-image, etc.). To bundle files in the Loops .zip,
+      put them under img/ and use src="img/yourfile.jpg" in MJML (Loops rewrites hosted URLs on upload).
+    • Article & Spotify: most inboxes won’t run embeds; use the post’s opengraph-image as the hero and link to the post. Copy any caption /
+      commentary from the app into the optional mj-text blocks marked ARTICLE_POST_CAPTION / EMMA_SPOTIFY_CAPTION below those cards.
     • Person of the Week bio: search for PERSON_OF_THE_WEEK_BIO — one <mj-text> you can edit like normal copy.
     Rebuild: npm run email:preview-loops
   -->
@@ -47,10 +51,6 @@
       .post-caption a {
         color: #71717a !important;
         text-decoration: none !important;
-      }
-      .post-date {
-        color: #d4d4d8 !important;
-        font-size: 12px !important;
       }
       .tag-pill {
         display: inline-block !important;
@@ -109,7 +109,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/aweissman" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://lh3.googleusercontent.com/a/ACg8ocJ8uHPFecr2JRCcXHUDy5AEKDq6n93Fugpq_ia0_Uddlv2H-zZV=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@aweissman</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@aweissman</span>
               </a>
             </td>
           </tr>
@@ -128,8 +128,6 @@
         <mj-text padding="0 0 0 0" font-size="12px" line-height="1.5">
           <a href="https://thingsilike.app/tag/aura" class="tag-pill">#aura</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Mar 30, 2026</mj-text>
       </mj-column>
     </mj-section>
 
@@ -144,7 +142,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/carrie" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://lh3.googleusercontent.com/a/ACg8ocLMx71h9xRsCGlhp7aKe2qfo1oENbDfzCj8jtrRNu2JDpnfZK7R=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@carrie</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@carrie</span>
               </a>
             </td>
           </tr>
@@ -160,8 +158,6 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/carrie/2a7ebecc-0420-41e7-b70a-d7fdf0116e1e">Run to love.</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Mar 28, 2026</mj-text>
       </mj-column>
     </mj-section>
 
@@ -176,7 +172,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/ilikethings" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://lh3.googleusercontent.com/a/ACg8ocJMtRabUfVbMM6GMc16EfnKlPLDTNrRM1c7spqlWSArdu9Isp5B=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@ilikethings</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@ilikethings</span>
               </a>
             </td>
           </tr>
@@ -192,8 +188,6 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/ilikethings/5a118d6d-74e4-4ff9-8523-e118e0d86ef4">Andy Warhol, Champagne Cocktail</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Mar 27, 2026</mj-text>
       </mj-column>
     </mj-section>
 
@@ -208,7 +202,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/fredwilson" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://lh3.googleusercontent.com/a/ACg8ocJ7COfEZpFs4UOAKrAkhM9xqomJ38kIDU8w3SMEL0dn92Q_31uf=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@fredwilson</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@fredwilson</span>
               </a>
             </td>
           </tr>
@@ -224,8 +218,6 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/fredwilson/2ce423cc-07a7-4893-b79f-20eb82d685b1">Golf with son Josh</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Mar 27, 2026</mj-text>
       </mj-column>
     </mj-section>
 
@@ -240,7 +232,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/tdevane" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/avatar/1774989008897-4s2oiy.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;object-fit:cover;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@tdevane</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@tdevane</span>
               </a>
             </td>
           </tr>
@@ -256,8 +248,10 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b">amazing concept</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Apr 1, 2026</mj-text>
+        <!-- ARTICLE_POST_CAPTION — optional: replace with the post’s caption from Things I Like, or delete this <mj-text> block. -->
+        <mj-text padding="10px 0 0 0" font-size="14px" line-height="1.55" color="#71717a">
+          Optional: paste article caption from the app here.
+        </mj-text>
       </mj-column>
     </mj-section>
 
@@ -272,7 +266,7 @@
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/emmacooper" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://lh3.googleusercontent.com/a/ACg8ocIGSg3XxMdcZfupzM3reyCzLXsjDAs-tosrZzINVKkY2bt0aGAIUA=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
-                <span style="font-size:14px;font-weight:600;vertical-align:middle;">@emmacooper</span>
+                <span style="font-size:14px;font-weight:400;vertical-align:middle;">@emmacooper</span>
               </a>
             </td>
           </tr>
@@ -288,8 +282,10 @@
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
           <a href="https://thingsilike.app/emmacooper/4e984f40-e144-4461-b368-e7c078f26dda">“Heavily produced” by Brian Wilson — a 1972 album we’d love to hear in full</a>
         </mj-text>
-        <mj-divider border-width="1px" border-color="#f4f4f5" padding="12px 0 8px 0" />
-        <mj-text padding="0" css-class="post-date">Apr 3, 2026</mj-text>
+        <!-- EMMA_SPOTIFY_CAPTION — paste Emma’s caption / commentary from the post on Things I Like (the gray text under the embed). -->
+        <mj-text padding="10px 0 0 0" font-size="14px" line-height="1.55" color="#71717a">
+          Paste caption from the app here (replace this sentence).
+        </mj-text>
       </mj-column>
     </mj-section>
 

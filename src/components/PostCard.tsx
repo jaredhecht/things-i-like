@@ -27,6 +27,7 @@ import {
 } from '@/src/lib/rething-chain'
 import { getPlaceFromPost, placeMapsUrl } from '@/src/lib/place-metadata'
 import { PostShareControl, SharePostButton } from '@/src/components/SharePostButton'
+import { ComposerTypeIcon } from '@/src/components/ComposerTypeIcons'
 
 function PlainWithMentions({ text }: { text: string }) {
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
@@ -464,12 +465,9 @@ export function PostCard({
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open in Google Maps"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-zinc-800 shadow-sm ring-1 ring-black/10 transition hover:bg-white"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-zinc-800 shadow-sm ring-1 ring-zinc-200/80 transition hover:bg-white hover:ring-zinc-300"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 21s7-4.35 11-10a8 8 0 1 0-16 0c0 5.65 7 10 7 10Z" />
-              <circle cx="12" cy="11" r="2.5" />
-            </svg>
+            <ComposerTypeIcon type="place" />
           </a>
         )
         return (

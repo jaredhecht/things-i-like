@@ -120,7 +120,7 @@
           </tr>
         </mj-table>
         <mj-image
-          src="https://thingsilike.app/aweissman/dd3fe596-9ecb-417a-ad85-ba92bfc40bab/opengraph-image"
+          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1a219d85-d60f-43bd-bd6b-c768fedaaf14/1774896414570-jr82g67r.jpeg"
           alt=""
           href="https://thingsilike.app/aweissman/dd3fe596-9ecb-417a-ad85-ba92bfc40bab"
           border-radius="6px"
@@ -309,7 +309,7 @@
         </mj-button>
         <!-- PERSON_OF_THE_WEEK_BIO — edit below; add another <mj-text> after this one for a second paragraph -->
         <mj-text align="left" padding="16px 20px 20px 20px" color="#52525b" font-size="15px" line-height="1.55">
-          Emma is a talented costume designer whose work has appeared on shows like Hacks, For All Mankind, and The Morning Show. She was an OG tumblr user. A conversation with her at a party two weeks ago about the good ol&rsquo; days of the internet inspired me to hack this project together. She posts great things.
+          Emma is a talented costume designer whose work has appeared on shows like <i>Hacks</i>, <i>For All Mankind</i>, and <i>The Morning Show</i>. She was an OG tumblr user. A conversation with her at a party two weeks ago about the good ol&rsquo; days of the internet inspired me to hack this project together. She posts great things.
         </mj-text>
       </mj-column>
     </mj-section>

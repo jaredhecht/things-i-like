@@ -182,9 +182,8 @@
             </td>
           </tr>
         </mj-table>
-        <!-- Alternate art URL: https://www.warhol.org/wp-content/uploads/2015/05/1998-1-1350_int_01_1500px1.jpg -->
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1a219d85-d60f-43bd-bd6b-c768fedaaf14/1774896414570-jr82g67r.jpeg"
+          src="https://www.warhol.org/wp-content/uploads/2015/05/1998-1-1350_int_01_1500px1.jpg"
           alt="Andy Warhol, Champagne Cocktail"
           href="https://thingsilike.app/ilikethings/5a118d6d-74e4-4ff9-8523-e118e0d86ef4"
           border-radius="6px"
@@ -227,15 +226,15 @@
       </mj-column>
     </mj-section>
 
-    <!-- 5 @tdevane — link-preview style (hero flush to card edges) -->
+    <!-- 5 @tdevane -->
     <mj-section padding="8px 16px 8px">
-      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="0">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="20px">
         <mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation">
           <tr>
-            <td style="padding:16px 8px 12px 20px;vertical-align:top;text-align:left;width:50%;">
-              <span style="color:#a1a1aa;font-size:11px;font-weight:400;letter-spacing:0.16em;text-transform:uppercase;">article</span>
+            <td style="padding:0 8px 12px 0;vertical-align:top;text-align:left;width:50%;">
+              <span style="color:#a1a1aa;font-size:11px;font-weight:400;letter-spacing:0.16em;text-transform:uppercase;">image</span>
             </td>
-            <td style="padding:16px 20px 12px 0;vertical-align:middle;text-align:right;width:50%;">
+            <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/tdevane" style="text-decoration:none;color:#3f3f46;">
                 <img src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/avatar/1774989008897-4s2oiy.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;object-fit:cover;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@tdevane</span>
@@ -244,21 +243,15 @@
           </tr>
         </mj-table>
         <mj-image
-          src="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b/opengraph-image"
-          alt="Live Near Friends"
-          href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b"
-          border-radius="0"
-          padding="0"
+          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/1774989692480-uxsj5f51.png"
+          alt="Record Stores from where I grew up"
+          href="https://thingsilike.app/tdevane/818b9a0f-ecf2-4fa5-b5e1-4c2ef14f6589"
+          border-radius="6px"
+          padding="0 0 16px 0"
           width="520px"
         />
-        <mj-text padding="16px 20px 4px 20px" font-size="11px" font-weight="600" letter-spacing="0.08em" text-transform="uppercase" color="#a1a1aa">
-          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#a1a1aa;text-decoration:none;">Live Near Friends</a>
-        </mj-text>
-        <mj-text padding="0 20px 6px 20px" font-size="16px" font-weight="600" line-height="1.35" color="#18181b">
-          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#18181b;text-decoration:none;">Live Near Friends</a>
-        </mj-text>
-        <mj-text padding="0 20px 20px 20px" font-size="14px" line-height="1.5" color="#71717a">
-          <a href="https://thingsilike.app/tdevane/ba302236-8908-4acb-a882-1a949907c90b" style="color:#71717a;text-decoration:none;">Buy or build homes next door to friends &amp; family. Make the fantasy into a reality.</a>
+        <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
+          <a href="https://thingsilike.app/tdevane/818b9a0f-ecf2-4fa5-b5e1-4c2ef14f6589">Record Stores from where I grew up</a>
         </mj-text>
       </mj-column>
     </mj-section>
@@ -269,7 +262,7 @@
         <mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation">
           <tr>
             <td style="padding:0 8px 12px 0;vertical-align:top;text-align:left;width:50%;">
-              <span style="color:#a1a1aa;font-size:11px;font-weight:400;letter-spacing:0.16em;text-transform:uppercase;">spotify</span>
+              <span style="color:#a1a1aa;font-size:11px;font-weight:400;letter-spacing:0.16em;text-transform:uppercase;">image</span>
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/emmacooper" style="text-decoration:none;color:#3f3f46;">
@@ -280,31 +273,24 @@
           </tr>
         </mj-table>
         <mj-image
-          src="https://thingsilike.app/emmacooper/4e984f40-e144-4461-b368-e7c078f26dda/opengraph-image"
-          alt=""
-          href="https://thingsilike.app/emmacooper/4e984f40-e144-4461-b368-e7c078f26dda"
+          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/32dc4118-f46f-4b54-a5f2-380657c9172b/1775114542503-896wal8o.jpeg"
+          alt="Dreams in Rose. Sarah Vrieling 2026"
+          href="https://thingsilike.app/emmacooper/49017971-cf14-4155-a9fd-80c60eaa0a8b"
           border-radius="6px"
           padding="0 0 16px 0"
           width="520px"
         />
         <mj-text padding="0 0 0 0" font-size="14px" line-height="1.5" color="#71717a" css-class="post-caption">
-          <a href="https://thingsilike.app/emmacooper/4e984f40-e144-4461-b368-e7c078f26dda">“Heavily produced” by Brian Wilson — a 1972 album we’d love to hear in full</a>
-        </mj-text>
-        <mj-text padding="10px 0 0 0" font-size="14px" line-height="1.55" color="#71717a">
-          &ldquo;Heavily produced&rdquo; by Brian Wilson, this 1972 album was recorded by sister duo Diane Rovell and Marilyn Wilson (Brian&rsquo;s then wife) and former members of the girl group The Honeys. This is the only song on Spotify but I would love to get my hands on this whole album.
-        </mj-text>
-        <mj-text padding="12px 0 0 0" font-size="12px" line-height="1.5">
-          <a href="https://thingsilike.app/tag/american-spring" class="tag-pill">#american-spring</a>
-          <a href="https://thingsilike.app/tag/brian-wilson" class="tag-pill">#brian-wilson</a>
+          <a href="https://thingsilike.app/emmacooper/49017971-cf14-4155-a9fd-80c60eaa0a8b">Dreams in Rose. Sarah Vrieling 2026</a>
         </mj-text>
       </mj-column>
     </mj-section>
 
-    <!-- Person of the Week: @emmacooper -->
+    <!-- Follow A Person Who Likes Things: @emmacooper -->
     <mj-section padding="8px 16px 0">
       <mj-column>
-        <mj-text font-size="11px" font-weight="600" letter-spacing="0.1em" text-transform="uppercase" color="#71717a" padding-bottom="8px">
-          Person of the Week
+        <mj-text align="center" font-size="11px" font-weight="600" letter-spacing="0.1em" text-transform="uppercase" color="#71717a" padding-bottom="8px">
+          Follow A Person Who Likes Things
         </mj-text>
       </mj-column>
     </mj-section>
@@ -323,7 +309,7 @@
         </mj-button>
         <!-- PERSON_OF_THE_WEEK_BIO — edit below; add another <mj-text> after this one for a second paragraph -->
         <mj-text align="left" padding="16px 20px 20px 20px" color="#52525b" font-size="15px" line-height="1.55">
-          Emma was an OG tumblr user. A conversation with her at a party two weeks ago about the good ol’ days of the internet inspired me to hack this project together. She posts great things.
+          Emma is a talented costume designer whose work has appeared on shows like Hacks, For All Mankind, and The Morning Show. She was an OG tumblr user. A conversation with her at a party two weeks ago about the good ol&rsquo; days of the internet inspired me to hack this project together. She posts great things.
         </mj-text>
       </mj-column>
     </mj-section>

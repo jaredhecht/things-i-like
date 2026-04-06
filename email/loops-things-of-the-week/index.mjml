@@ -13,12 +13,17 @@
     • Post author row: same block — edit the <mj-table> row: profile link, `img src` (avatar), and @handle text (@handles are normal weight).
     • Images: set <mj-image src="https://…" /> to any public URL (Supabase post-images, opengraph-image, etc.). To bundle files in the Loops .zip,
       put them under img/ and use src="img/yourfile.jpg" in MJML (Loops rewrites hosted URLs on upload).
+    • Preview: do NOT rely on double‑clicking preview.html (file://). Remote images often fail from file URLs. Run: npm run email:serve-preview
+      then open http://localhost:4173/preview.html in your browser.
     • Article & Spotify: most inboxes won’t run embeds; use the post’s opengraph-image as the hero and link to the post. Copy any caption /
       commentary from the app into the optional mj-text blocks marked ARTICLE_POST_CAPTION / EMMA_SPOTIFY_CAPTION below those cards.
     • Person of the Week bio: search for PERSON_OF_THE_WEEK_BIO — one <mj-text> you can edit like normal copy.
     Rebuild: npm run email:preview-loops
   -->
   <mj-head>
+    <mj-raw>
+      <meta name="referrer" content="no-referrer" />
+    </mj-raw>
     <mj-title>Things of the Week — Things I Like</mj-title>
     <mj-preview>Six things from the community, plus someone to follow.</mj-preview>
     <mj-attributes>

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "email:preview-loops": "mjml email/loops-things-of-the-week/index.mjml -o email/loops-things-of-the-week/preview.html"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
@@ -26,6 +27,7 @@
     "@types/sanitize-html": "^2.16.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "mjml": "^4.15.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

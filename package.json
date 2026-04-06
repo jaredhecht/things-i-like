@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "email:preview-loops": "mjml email/loops-things-of-the-week/index.mjml -o email/loops-things-of-the-week/preview.html",
-    "email:serve-preview": "npm run email:preview-loops && npx --yes serve email/loops-things-of-the-week -l 4173"
+    "email:serve-preview": "npm run email:preview-loops && npx --yes serve email/loops-things-of-the-week -l 4173",
+    "email:zip-loops": "cd email/loops-things-of-the-week && rm -f things-of-the-week-loops.zip && zip -r things-of-the-week-loops.zip index.mjml img -x 'img/.gitkeep' -x '*.DS_Store'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",

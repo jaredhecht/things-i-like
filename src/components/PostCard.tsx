@@ -475,11 +475,19 @@ export function PostCard({
         return (
           <div className="mb-4">
             {hasHero && post.content ? (
-              <div className="relative overflow-hidden rounded-md bg-zinc-100">
-                <a href={post.content} target="_blank" rel="noopener noreferrer" className="block">
-                  <img src={post.content} alt="" className="max-h-[min(60vh,520px)] w-full object-cover" />
+              <div className="relative overflow-hidden rounded-md border border-zinc-100 bg-white p-1">
+                <a
+                  href={post.content}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-[100px] items-center justify-center"
+                >
+                  <img
+                    src={post.content}
+                    alt=""
+                    className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
+                  />
                 </a>
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" aria-hidden />
                 <div className="absolute bottom-2 right-2 pointer-events-auto">{pin}</div>
               </div>
             ) : (

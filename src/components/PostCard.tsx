@@ -16,10 +16,15 @@ import {
   isSoundCloudUrl,
   isValidHttpUrl,
   normalizeSoundCloudStoredContent,
+  stripHtml,
   type LinkPreview,
   type Post,
 } from '@/src/lib/post-helpers'
 import { parsePostTags } from '@/src/lib/post-tags'
+import {
+  flattenRethingChainFromRoot,
+  parseRethingOriginalFromMetadata,
+} from '@/src/lib/rething-chain'
 import { PostShareControl, SharePostButton } from '@/src/components/SharePostButton'
 
 function PlainWithMentions({ text }: { text: string }) {
@@ -249,7 +254,16 @@ export function PostCard({
   }, [liveLinkPreview?.title, post.content, post.type])
 
   const postTags = useMemo(() => parsePostTags(post.tags), [post.tags])
-  const hasTags = postTags.length > 0
+  const rethingChainRoot = useMemo(() => parseRethingOriginalFromMetadata(post.metadata), [post.metadata])
+  const rethingLayers = useMemo(() => {
+    const flat = flattenRethingChainFromRoot(rethingChainRoot)
+    return flat.filter(
+      (b) =>
+        (b.caption && stripHtml(b.caption).length > 0) || (Array.isArray(b.tags) && b.tags.length > 0),
+    )
+  }, [rethingChainRoot])
+  const preservedRethingContent = Boolean(post.rething_of_post_id && rethingLayers.length > 0)
+  const hasTags = postTags.length > 0 && !preservedRethingContent
 
   const showEngagement =
     dashboardActions &&
@@ -496,11 +510,47 @@ export function PostCard({
         </a>
       ) : null}
 
+      {preservedRethingContent ? (
+        <div className="mb-3 rounded-md border border-zinc-100 bg-zinc-50/90 p-3">
+          {rethingLayers.map((layer, i) => (
+            <div key={i} className={i > 0 ? 'mt-3 border-t border-zinc-200/80 pt-3' : ''}>
+              {layer.caption && stripHtml(layer.caption).length > 0 ? (
+                <div
+                  role="presentation"
+                  onClick={handleRichTextLinkClick}
+                  className="text-sm leading-relaxed text-zinc-700 [&_a]:text-blue-600 [&_a]:underline"
+                  dangerouslySetInnerHTML={{
+                    __html: linkifyAtMentionsInHtml(sanitizeRichHtml(layer.caption)),
+                  }}
+                />
+              ) : null}
+              {layer.tags.length > 0 ? (
+                <div className={`flex flex-wrap gap-1.5 ${layer.caption && stripHtml(layer.caption).length > 0 ? 'mt-2' : ''}`}>
+                  {layer.tags.map((t) => (
+                    <Link
+                      key={`${i}-${t}`}
+                      href={`/tag/${encodeURIComponent(t)}`}
+                      className="rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 text-xs font-medium text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900"
+                    >
+                      #{t}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {post.caption ? (
         <div
           role="presentation"
           onClick={handleRichTextLinkClick}
-          className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline"
+          className={`mb-2 text-sm [&_a]:text-blue-600 [&_a]:underline ${
+            preservedRethingContent
+              ? 'border-t border-zinc-100 pt-3 text-zinc-800'
+              : 'text-zinc-500'
+          }`}
           dangerouslySetInnerHTML={{ __html: htmlCaption }}
         />
       ) : null}

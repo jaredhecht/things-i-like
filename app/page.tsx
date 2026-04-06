@@ -36,6 +36,7 @@ import { fetchLinkPreviewClient } from '../src/lib/link-preview-client'
 import { sanitizeRichHtml } from '../src/lib/sanitize-rich-html'
 import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
+import { buildRethingSnapshotForInsert } from '../src/lib/rething-chain'
 import { fetchRethingCountsForPostIds } from '../src/lib/rething-counts'
 import { supabase } from '../src/lib/supabase'
 
@@ -475,9 +476,15 @@ export default function Home() {
       (rethingSource.rething_from_username && rethingSource.rething_from_username.trim()) ||
       (rethingSource.user_id ? authorByUserId[rethingSource.user_id]?.username : '') ||
       'someone'
-    const metadata =
-      rethingSource.metadata && typeof rethingSource.metadata === 'object' ? { ...rethingSource.metadata } : {}
+    const baseMeta =
+      rethingSource.metadata && typeof rethingSource.metadata === 'object'
+        ? { ...(rethingSource.metadata as Record<string, unknown>) }
+        : {}
     const rethingTags = parsePostTags(rethingSource.tags)
+    const metadata = {
+      ...baseMeta,
+      rething_original: buildRethingSnapshotForInsert(rethingSource),
+    }
     const { data: rethingRow, error } = await supabase
       .from('posts')
       .insert({

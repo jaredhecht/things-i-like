@@ -16,6 +16,7 @@ import {
 } from '@/src/lib/post-helpers'
 import { sanitizeRichHtml } from '@/src/lib/sanitize-rich-html'
 import { parsePostTags, tagsFromComposerInputs } from '@/src/lib/post-tags'
+import { getPlaceFromPost } from '@/src/lib/place-metadata'
 import { supabase } from '@/src/lib/supabase'
 
 type EditField = 'content' | 'caption'
@@ -128,7 +129,9 @@ export function InlinePostEditor({
     const contentFromDom =
       post.type === 'text' || post.type === 'quote'
         ? (editContentEditorRef.current?.innerHTML ?? editingContent).trim()
-        : editingContent.trim()
+        : post.type === 'place'
+          ? (post.content || '').trim()
+          : editingContent.trim()
     const captionFromDom = (editCaptionEditorRef.current?.innerHTML ?? editingCaption).trim()
     const updates: {
       content: string
@@ -222,6 +225,13 @@ export function InlinePostEditor({
             maxPlainTextLength={500}
             onProfilePathNavigate={(p) => router.push(p)}
           />
+        ) : post.type === 'place' ? (
+          <div className="mb-3 rounded-md border border-zinc-200 bg-zinc-50/90 p-3 text-sm text-zinc-600">
+            <p className="font-medium text-zinc-900">{getPlaceFromPost(post)?.name ?? 'Place'}</p>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+              Location and cover photo can’t be edited here. Delete this post and add a new one to change them.
+            </p>
+          </div>
         ) : (
           <input
             value={editingContent}

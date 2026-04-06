@@ -14,6 +14,7 @@ alter table public.posts
       'spotify',
       'soundcloud',
       'audio',
-      'article'
+      'article',
+      'place'
     )
   );

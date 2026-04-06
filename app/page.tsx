@@ -39,6 +39,13 @@ import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { buildRethingSnapshotForInsert } from '../src/lib/rething-chain'
 import { fetchRethingCountsForPostIds } from '../src/lib/rething-counts'
 import { supabase } from '../src/lib/supabase'
+import {
+  cacheGooglePlacePhoto,
+  fetchPlaceAutocomplete,
+  fetchPlaceDetails,
+  type PlaceDetailsPayload,
+  type PlacePrediction,
+} from '../src/lib/places-client'
 
 type Profile = {
   id: string
@@ -54,7 +61,7 @@ type AuthorMeta = {
   avatar_url?: string | null
 }
 
-type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
+type ComposerType = 'image' | 'video' | 'link' | 'place' | 'text' | 'quote' | 'audio'
 type LinkTab = 'article' | 'spotify' | 'youtube'
 type EditorTarget = 'text' | 'caption'
 
@@ -90,6 +97,12 @@ export default function Home() {
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [articleUrl, setArticleUrl] = useState('')
   const [audioUrl, setAudioUrl] = useState('')
+  const [placeSearchInput, setPlaceSearchInput] = useState('')
+  const [placePredictions, setPlacePredictions] = useState<PlacePrediction[]>([])
+  const [placeDetails, setPlaceDetails] = useState<PlaceDetailsPayload | null>(null)
+  const [placeFreeformName, setPlaceFreeformName] = useState('')
+  const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false)
+  const [placeGooglePhotoLoading, setPlaceGooglePhotoLoading] = useState(false)
   const [caption, setCaption] = useState('')
   const [tagInput0, setTagInput0] = useState('')
   const [tagInput1, setTagInput1] = useState('')
@@ -661,8 +674,33 @@ export default function Home() {
       if (linkTab === 'spotify') return spotifyUrl.trim().length > 0
       return youtubeUrl.trim().length > 0
     }
+    if (panel === 'place') {
+      const name = (placeDetails?.name ?? '').trim() || placeFreeformName.trim()
+      return (
+        name.length > 0 &&
+        !imageUploading &&
+        !placeDetailsLoading &&
+        !placeGooglePhotoLoading
+      )
+    }
     return false
-  }, [panel, textContent, quoteContent, imageUrl, imageUploading, videoUrl, audioUrl, linkTab, articleUrl, spotifyUrl, youtubeUrl])
+  }, [
+    panel,
+    textContent,
+    quoteContent,
+    imageUrl,
+    imageUploading,
+    videoUrl,
+    audioUrl,
+    linkTab,
+    articleUrl,
+    spotifyUrl,
+    youtubeUrl,
+    placeDetails,
+    placeFreeformName,
+    placeDetailsLoading,
+    placeGooglePhotoLoading,
+  ])
 
   function syncRichTextFromActiveEditor() {
     if (!activeEditor) return
@@ -748,7 +786,7 @@ export default function Home() {
   }, [rethingSource, rethingBusy])
 
   useEffect(() => {
-    if (panel !== 'image') return
+    if (panel !== 'image' && panel !== 'place') return
     const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items
       if (!items) return
@@ -765,6 +803,40 @@ export default function Home() {
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
   }, [panel, uploadImageFile])
+
+  useEffect(() => {
+    if (panel === 'place') return
+    setPlaceSearchInput('')
+    setPlacePredictions([])
+    setPlaceDetails(null)
+    setPlaceFreeformName('')
+    setPlaceDetailsLoading(false)
+    setPlaceGooglePhotoLoading(false)
+  }, [panel])
+
+  useEffect(() => {
+    if (panel !== 'place') return
+    const q = placeSearchInput.trim()
+    if (q.length < 2) {
+      setPlacePredictions([])
+      return
+    }
+    let cancelled = false
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const preds = await fetchPlaceAutocomplete(q)
+          if (!cancelled) setPlacePredictions(preds)
+        } catch {
+          if (!cancelled) setPlacePredictions([])
+        }
+      })()
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [placeSearchInput, panel])
 
   async function createPost() {
     if (!user || !panel || !canPost) return
@@ -847,9 +919,39 @@ export default function Home() {
         type = 'youtube'
         content = youtubeUrl.trim()
       }
+    } else if (panel === 'place') {
+      const name = (placeDetails?.name ?? '').trim() || placeFreeformName.trim()
+      if (!name) {
+        setLoading(false)
+        return
+      }
+      type = 'place'
+      content = imageUrl.trim() || ''
+      if (placeDetails) {
+        metadata.place = {
+          name: placeDetails.name.trim(),
+          place_id: placeDetails.place_id,
+          formatted_address: placeDetails.formatted_address?.trim() || null,
+          city: placeDetails.city,
+          lat: placeDetails.lat,
+          lng: placeDetails.lng,
+          source: 'google',
+        }
+      } else {
+        metadata.place = {
+          name: placeFreeformName.trim(),
+          source: 'freeform',
+        }
+      }
     }
 
-    if (isValidHttpUrl(content) && !metadata.link_preview && type !== 'soundcloud') {
+    if (
+      isValidHttpUrl(content) &&
+      !metadata.link_preview &&
+      type !== 'soundcloud' &&
+      type !== 'place' &&
+      type !== 'image'
+    ) {
       const preview = await fetchLinkPreviewClient(content)
       if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
     }
@@ -1151,7 +1253,7 @@ export default function Home() {
 
             <div className="border-t border-[#dbdbdb] px-3.5 py-2.5">
               <div className="flex flex-wrap gap-1.5">
-                {(['image', 'video', 'link', 'text', 'quote', 'audio'] as ComposerType[]).map((type) => (
+                {(['image', 'video', 'link', 'place', 'text', 'quote', 'audio'] as ComposerType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
@@ -1281,6 +1383,185 @@ export default function Home() {
                           disabled={imageUploading}
                           className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
                         />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {panel === 'place' ? (
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <p className="mb-1 text-xs font-medium text-[#8e8e8e]">Search Google Maps</p>
+                        <input
+                          type="text"
+                          value={placeSearchInput}
+                          onChange={(e) => setPlaceSearchInput(e.target.value)}
+                          placeholder="Restaurant, park, neighborhood…"
+                          disabled={placeDetailsLoading}
+                          className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
+                        />
+                        {placePredictions.length > 0 ? (
+                          <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-md border border-[#dbdbdb] bg-white py-1 shadow-lg">
+                            {placePredictions.map((p) => (
+                              <li key={p.placeId}>
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                                  onClick={() => {
+                                    void (async () => {
+                                      setPlaceSearchInput(p.mainText)
+                                      setPlacePredictions([])
+                                      setPlaceDetailsLoading(true)
+                                      try {
+                                        const d = await fetchPlaceDetails(p.placeId)
+                                        setPlaceDetails(d)
+                                      } finally {
+                                        setPlaceDetailsLoading(false)
+                                      }
+                                    })()
+                                  }}
+                                >
+                                  <span className="block font-medium text-zinc-900">{p.mainText}</span>
+                                  {p.secondaryText ? (
+                                    <span className="block text-xs text-zinc-500">{p.secondaryText}</span>
+                                  ) : null}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+
+                      {placeDetailsLoading ? <p className="text-sm text-zinc-500">Loading place…</p> : null}
+
+                      {placeDetails ? (
+                        <div className="rounded-[4px] border border-[#dbdbdb] bg-zinc-50/80 px-3 py-2.5 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-zinc-900">{placeDetails.name}</p>
+                              {placeDetails.formatted_address ? (
+                                <p className="mt-0.5 text-xs text-zinc-600">{placeDetails.formatted_address}</p>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlaceDetails(null)
+                                setPlaceFreeformName(placeDetails.name)
+                              }}
+                              className="shrink-0 text-xs font-semibold text-[#0095f6] hover:underline"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                          {placeDetails.photoReference ? (
+                            <button
+                              type="button"
+                              disabled={placeGooglePhotoLoading || imageUploading}
+                              onClick={() => {
+                                void (async () => {
+                                  setPlaceGooglePhotoLoading(true)
+                                  try {
+                                    const url = await cacheGooglePlacePhoto(placeDetails.photoReference!)
+                                    if (url) setImageUrl(url)
+                                  } finally {
+                                    setPlaceGooglePhotoLoading(false)
+                                  }
+                                })()
+                              }}
+                              className="mt-2 text-xs font-semibold text-zinc-700 underline decoration-zinc-400 hover:text-zinc-900 disabled:opacity-40"
+                            >
+                              {placeGooglePhotoLoading ? 'Adding photo…' : 'Use Google cover photo (saved to your storage)'}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <p className="mb-1 text-xs font-medium text-[#8e8e8e]">
+                          {placeDetails ? 'Using Google place above' : 'Or enter a place name (no map link)'}
+                        </p>
+                        <input
+                          type="text"
+                          value={placeFreeformName}
+                          onChange={(e) => setPlaceFreeformName(e.target.value)}
+                          placeholder="e.g. My favorite bench, Aunt’s kitchen…"
+                          disabled={!!placeDetails}
+                          className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:bg-zinc-50 disabled:text-zinc-500"
+                        />
+                        {placeDetails ? (
+                          <p className="mt-1 text-[11px] text-[#b8b8b8]">Clear the Google result to post a plain name only.</p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-3 border-t border-[#dbdbdb] pt-3">
+                        <p className="text-xs font-medium text-[#8e8e8e]">Cover photo (optional)</p>
+                        <input
+                          ref={imageFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) void uploadImageFile(f)
+                            e.target.value = ''
+                          }}
+                        />
+                        {!imageUrl && !imageLocalPreview ? (
+                          <button
+                            type="button"
+                            onClick={() => imageFileInputRef.current?.click()}
+                            className="w-full rounded-[4px] border border-dashed border-[#dbdbdb] px-3 py-6 text-center text-sm text-zinc-700 hover:bg-zinc-50"
+                          >
+                            Upload an image (optional)
+                          </button>
+                        ) : (
+                          <div className="relative overflow-hidden rounded-[4px] border border-[#dbdbdb]">
+                            <img
+                              src={imageLocalPreview || imageUrl}
+                              alt=""
+                              className="mx-auto max-h-[min(40vh,320px)] w-full object-contain bg-white"
+                            />
+                            {imageUploading ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm font-medium text-zinc-600">
+                                Uploading…
+                              </div>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => clearImageComposerState()}
+                              disabled={imageUploading}
+                              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/70 disabled:opacity-50"
+                              aria-label="Remove image"
+                            >
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                        <div>
+                          <p className="mb-1 text-xs text-[#8e8e8e]">Or image URL</p>
+                          <input
+                            type="url"
+                            value={imageUrl}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              if (!raw.trim()) {
+                                clearImageComposerState()
+                                return
+                              }
+                              setImageUrl(raw)
+                              setImageLocalPreview((prev) => {
+                                if (prev) URL.revokeObjectURL(prev)
+                                return null
+                              })
+                            }}
+                            placeholder="https://…"
+                            disabled={imageUploading}
+                            className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
+                          />
+                        </div>
                       </div>
                     </div>
                   ) : null}
@@ -1574,7 +1855,13 @@ export default function Home() {
                         setActiveEditor('caption')
                         updateToolbarState('caption')
                       }}
-                      placeholder={panel === 'link' ? 'Add a note... why does this matter to you?' : 'Add a caption...'}
+                      placeholder={
+                        panel === 'link'
+                          ? 'Add a note... why does this matter to you?'
+                          : panel === 'place'
+                            ? 'Say something about this place…'
+                            : 'Add a caption...'
+                      }
                       className="min-h-[32px] w-full text-sm text-zinc-700 focus:outline-none [&_a]:text-blue-600 [&_a]:underline"
                       editorRef={captionEditorRef}
                       onProfilePathNavigate={(p) => router.push(p)}
@@ -1623,7 +1910,12 @@ export default function Home() {
                     {panel === 'text' ? `${textCount} / 500` : ''}
                   </p>
                   <button type="button" onClick={resetComposer} className="text-[13px] font-semibold text-[#8e8e8e] hover:text-zinc-900">Cancel</button>
-                  <button type="button" onClick={createPost} disabled={!canPost || loading || imageUploading} className="rounded-full bg-zinc-900 px-4.5 py-1.5 text-[13px] font-bold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button
+                    type="button"
+                    onClick={createPost}
+                    disabled={!canPost || loading || imageUploading || placeDetailsLoading || placeGooglePhotoLoading}
+                    className="rounded-full bg-zinc-900 px-4.5 py-1.5 text-[13px] font-bold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
                     {loading ? 'Posting...' : 'Post'}
                   </button>
                 </div>

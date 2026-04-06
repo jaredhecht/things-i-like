@@ -25,6 +25,7 @@ import {
   flattenRethingChainFromRoot,
   parseRethingOriginalFromMetadata,
 } from '@/src/lib/rething-chain'
+import { getPlaceFromPost, placeMapsUrl } from '@/src/lib/place-metadata'
 import { PostShareControl, SharePostButton } from '@/src/components/SharePostButton'
 
 function PlainWithMentions({ text }: { text: string }) {
@@ -451,6 +452,55 @@ export function PostCard({
         </a>
       ) : null}
 
+      {post.type === 'place' ? (() => {
+        const place = getPlaceFromPost(post)
+        if (!place) return null
+        const mapsHref = placeMapsUrl(place)
+        const sub = place.city?.trim() || place.formatted_address?.trim() || null
+        const hasHero = Boolean(post.content && isValidHttpUrl(post.content))
+        const pin = (
+          <a
+            href={mapsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open in Google Maps"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-zinc-800 shadow-sm ring-1 ring-black/10 transition hover:bg-white"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 21s7-4.35 11-10a8 8 0 1 0-16 0c0 5.65 7 10 7 10Z" />
+              <circle cx="12" cy="11" r="2.5" />
+            </svg>
+          </a>
+        )
+        return (
+          <div className="mb-4">
+            {hasHero && post.content ? (
+              <div className="relative overflow-hidden rounded-md bg-zinc-100">
+                <a href={post.content} target="_blank" rel="noopener noreferrer" className="block">
+                  <img src={post.content} alt="" className="max-h-[min(60vh,520px)] w-full object-cover" />
+                </a>
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" aria-hidden />
+                <div className="absolute bottom-2 right-2 pointer-events-auto">{pin}</div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-3 rounded-md border border-zinc-100 bg-zinc-50/90 px-4 py-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-lg font-semibold leading-snug tracking-tight text-zinc-900">{place.name}</p>
+                  {sub ? <p className="mt-1 text-sm leading-relaxed text-zinc-500">{sub}</p> : null}
+                </div>
+                {pin}
+              </div>
+            )}
+            {hasHero ? (
+              <div className="mt-3">
+                <p className="text-base font-semibold leading-snug text-zinc-900">{place.name}</p>
+                {sub ? <p className="mt-0.5 text-sm text-zinc-500">{sub}</p> : null}
+              </div>
+            ) : null}
+          </div>
+        )
+      })() : null}
+
       {post.type === 'article' && post.content ? (
         renderPrettyLinkCard ? (
           <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block overflow-hidden rounded-md border border-zinc-200 hover:bg-zinc-50">
@@ -504,7 +554,7 @@ export function PostCard({
           ) : null}
         </>
       ) : null}
-      {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text'].includes(post.type) && post.content ? (
+      {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text', 'place'].includes(post.type) && post.content ? (
         <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
           {post.content}
         </a>

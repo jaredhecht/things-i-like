@@ -1,4 +1,4 @@
-type ComposerType = 'image' | 'video' | 'link' | 'text' | 'quote' | 'audio'
+type ComposerType = 'image' | 'video' | 'link' | 'place' | 'text' | 'quote' | 'audio'
 
 const iconClass = 'h-5 w-5 shrink-0'
 
@@ -17,6 +17,19 @@ export function ComposerTypeIcon({ type }: { type: ComposerType }) {
         <svg viewBox="0 0 40 40" fill="none" className={iconClass} aria-hidden>
           <rect x="3" y="10" width="24" height="20" rx="4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M27 16l10-5v18l-10-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    case 'place':
+      return (
+        <svg viewBox="0 0 40 40" fill="none" className={iconClass} aria-hidden>
+          <path
+            d="M20 6c-4.5 0-8 3.4-8 7.8 0 5.8 8 16.2 8 16.2s8-10.4 8-16.2C28 9.4 24.5 6 20 6Z"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="20" cy="14" r="3" fill="currentColor" />
         </svg>
       )
     case 'link':

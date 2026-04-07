@@ -1210,6 +1210,17 @@ export default function Home() {
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+      const urlFeed = params.get('feed')
+      if (urlFeed === 'everything' || urlFeed === 'following') {
+        setFeedScope(urlFeed)
+        localStorage.setItem(HOME_FEED_SCOPE_KEY, urlFeed)
+        return
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
       const v = localStorage.getItem(HOME_FEED_SCOPE_KEY)
       if (v === 'everything' || v === 'following') setFeedScope(v)
     } catch {
@@ -2119,7 +2130,7 @@ export default function Home() {
                       : 'text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900'
                   }`}
                 >
-                  Everything
+                  EveryThing
                 </button>
               </div>
             </div>

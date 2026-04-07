@@ -27,7 +27,7 @@ import {
   type LinkPreview,
   type Post,
 } from '../src/lib/post-helpers'
-import { fetchRecentPostsForAuthorIds } from '../src/lib/posts-batched'
+import { fetchRecentPostsForAuthorIds, fetchRecentPostsGlobal } from '../src/lib/posts-batched'
 import { fetchEngagementForPostIds } from '../src/lib/engagement-client'
 import { PostModulesSheet } from '../src/components/PostModulesSheet'
 import { classifyPostAfterSave } from '../src/lib/modules-ui'
@@ -73,8 +73,11 @@ const PUBLIC_PREVIEW_PAGE = 150
 /** Cap sequential post fetches for signed-out preview (each round trip is slow on mobile / cold start). */
 const PUBLIC_PREVIEW_MAX_PAGES = 10
 const PROFILE_IN_CHUNK = 100
-/** Home feed: only load the newest N posts across you + people you follow (full history is expensive). */
-const SIGNED_IN_FEED_LIMIT = 150
+/** Signed-in dashboard: page size for following + everything feeds (infinite scroll loads more). */
+const FEED_PAGE_SIZE = 20
+const HOME_FEED_SCOPE_KEY = 'til-home-feed-scope'
+type HomeFeedScope = 'following' | 'everything'
+type FeedFetchOptions = { offset?: number; append?: boolean }
 
 export default function Home() {
   const router = useRouter()
@@ -136,9 +139,17 @@ export default function Home() {
   /** Latest signed-in user for callbacks that must not call `getUser()` (avoids auth lock races on startup). */
   const userRef = useRef<User | null>(null)
   userRef.current = user
+  const [feedScope, setFeedScope] = useState<HomeFeedScope>('following')
+  const feedScopeRef = useRef<HomeFeedScope>('following')
+  feedScopeRef.current = feedScope
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
+  const [feedHasMore, setFeedHasMore] = useState(false)
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
+  const postsRef = useRef<Post[]>([])
+  postsRef.current = posts
+  const feedSentinelRef = useRef<HTMLDivElement | null>(null)
 
   function clearImageComposerState() {
     setImageLocalPreview((prev) => {
@@ -272,6 +283,19 @@ export default function Home() {
     setRethingCounts(rethingByPost)
   }, [])
 
+  const mergeEngagementForNewPosts = useCallback(async (userId: string, list: Post[]) => {
+    if (list.length === 0) return
+    const ids = list.map((p) => p.id)
+    const [{ likeCounts, likedPostIds: my, bookmarkedPostIds: bookmarks }, rethingByPost] = await Promise.all([
+      fetchEngagementForPostIds(supabase, userId, ids),
+      fetchRethingCountsForPostIds(supabase, ids),
+    ])
+    setLikeCounts((prev) => ({ ...prev, ...likeCounts }))
+    setLikedPostIds((prev) => new Set([...prev, ...my]))
+    setBookmarkedPostIds((prev) => new Set([...prev, ...bookmarks]))
+    setRethingCounts((prev) => ({ ...prev, ...rethingByPost }))
+  }, [])
+
   const loadPublicPreviewPosts = useCallback(async () => {
     const picked: Post[] = []
     const seenUser = new Set<string>()
@@ -334,7 +358,9 @@ export default function Home() {
   }, [])
 
   const fetchFeedForUser = useCallback(
-    async (userId: string, preloadedFollowingIds?: string[]) => {
+    async (userId: string, preloadedFollowingIds?: string[], options?: FeedFetchOptions) => {
+      const offset = options?.offset ?? 0
+      const append = options?.append ?? false
       let followingIds: string[]
       if (preloadedFollowingIds) {
         followingIds = preloadedFollowingIds
@@ -344,51 +370,112 @@ export default function Home() {
         followingIds = [...new Set((follows || []).map((f) => f.following_id))]
       }
       const authorIds = [...new Set([userId, ...followingIds])]
-      const [list, { data: profs }] = await Promise.all([
-        fetchRecentPostsForAuthorIds(supabase, authorIds, SIGNED_IN_FEED_LIMIT).catch((error) => {
-          console.error('Error fetching feed:', error)
-          return [] as Post[]
-        }),
-        supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', authorIds),
-      ])
+      const list = await fetchRecentPostsForAuthorIds(supabase, authorIds, FEED_PAGE_SIZE, offset).catch((error) => {
+        console.error('Error fetching feed:', error)
+        return [] as Post[]
+      })
+      const profileQueryIds = append
+        ? [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
+        : authorIds
       const map: Record<string, AuthorMeta> = {}
-      for (const p of profs || []) {
-        map[p.id] = {
-          username: p.username,
-          display_name: p.display_name,
-          avatar_url: p.avatar_url ?? null,
+      if (profileQueryIds.length > 0) {
+        const { data: profs, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', profileQueryIds)
+        if (profErr) console.error('Error loading feed author profiles:', profErr)
+        for (const p of profs || []) {
+          map[p.id] = {
+            username: p.username,
+            display_name: p.display_name,
+            avatar_url: p.avatar_url ?? null,
+          }
         }
       }
-      setAuthorByUserId(map)
-      setPosts(list)
-      await hydrateEngagement(userId, list)
+      const hasMore = list.length === FEED_PAGE_SIZE
+      if (append) {
+        setPosts((prev) => {
+          const seen = new Set(prev.map((p) => p.id))
+          const out = [...prev]
+          for (const p of list) {
+            if (!seen.has(p.id)) {
+              seen.add(p.id)
+              out.push(p)
+            }
+          }
+          return out
+        })
+        setAuthorByUserId((prev) => ({ ...prev, ...map }))
+        await mergeEngagementForNewPosts(userId, list)
+      } else {
+        setAuthorByUserId(map)
+        setPosts(list)
+        await hydrateEngagement(userId, list)
+      }
+      setFeedHasMore(hasMore)
     },
-    [hydrateEngagement],
+    [hydrateEngagement, mergeEngagementForNewPosts],
   )
 
-  const runHomeBootstrap = useCallback(
-    async (userId: string) => {
-      const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
-      if (followErr) console.error('Error fetching follows (bootstrap):', followErr)
-      const n = (follows || []).length
-      setFollowingOtherCount(n)
-      const clearSignedInFeed = () => {
-        setPosts([])
-        setAuthorByUserId({})
-        setLikeCounts({})
-        setLikedPostIds(new Set())
-        setBookmarkedPostIds(new Set())
-        setRethingCounts({})
+  const fetchEverythingFeed = useCallback(
+    async (userId: string, options?: FeedFetchOptions) => {
+      const offset = options?.offset ?? 0
+      const append = options?.append ?? false
+      const list = await fetchRecentPostsGlobal(supabase, FEED_PAGE_SIZE, offset).catch((error) => {
+        console.error('Error fetching global feed:', error)
+        return [] as Post[]
+      })
+      const authorIds = [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
+      const map: Record<string, AuthorMeta> = {}
+      for (let i = 0; i < authorIds.length; i += PROFILE_IN_CHUNK) {
+        const slice = authorIds.slice(i, i + PROFILE_IN_CHUNK)
+        const { data: profs, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', slice)
+        if (profErr) {
+          console.error('Error loading global feed author profiles:', profErr)
+          continue
+        }
+        for (const p of profs || []) {
+          map[p.id] = {
+            username: p.username,
+            display_name: p.display_name,
+            avatar_url: p.avatar_url ?? null,
+          }
+        }
       }
-      if (n === 0) {
-        clearSignedInFeed()
-        return
+      const hasMore = list.length === FEED_PAGE_SIZE
+      if (append) {
+        setPosts((prev) => {
+          const seen = new Set(prev.map((p) => p.id))
+          const out = [...prev]
+          for (const p of list) {
+            if (!seen.has(p.id)) {
+              seen.add(p.id)
+              out.push(p)
+            }
+          }
+          return out
+        })
+        setAuthorByUserId((prev) => ({ ...prev, ...map }))
+        await mergeEngagementForNewPosts(userId, list)
+      } else {
+        setAuthorByUserId(map)
+        setPosts(list)
+        await hydrateEngagement(userId, list)
       }
-      const followingIds = [...new Set((follows || []).map((f) => f.following_id))]
-      await fetchFeedForUser(userId, followingIds)
+      setFeedHasMore(hasMore)
     },
-    [fetchFeedForUser],
+    [hydrateEngagement, mergeEngagementForNewPosts],
   )
+
+  const runHomeBootstrap = useCallback(async (userId: string) => {
+    const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+    if (followErr) console.error('Error fetching follows (bootstrap):', followErr)
+    const n = (follows || []).length
+    setFollowingOtherCount(n)
+  }, [])
 
   const loadPublicPreviewPostsRef = useRef(loadPublicPreviewPosts)
   loadPublicPreviewPostsRef.current = loadPublicPreviewPosts
@@ -404,23 +491,9 @@ export default function Home() {
       console.error('refetchFollowingCount:', error)
       return
     }
-    const n = (data || []).length
-    setFollowingOtherCount(n)
-    const clearSignedInFeed = () => {
-      setPosts([])
-      setAuthorByUserId({})
-      setLikeCounts({})
-      setLikedPostIds(new Set())
-      setBookmarkedPostIds(new Set())
-      setRethingCounts({})
-    }
-    if (n === 0) {
-      clearSignedInFeed()
-      return
-    }
-    const followingIds = [...new Set((data || []).map((f) => f.following_id))]
-    await fetchFeedForUser(user.id, followingIds)
-  }, [user?.id, fetchFeedForUser])
+    setFollowingOtherCount((data || []).length)
+    setDirectoryRefreshKey((k) => k + 1)
+  }, [user?.id])
 
   async function fetchFeed() {
     const u = userRef.current
@@ -429,8 +502,33 @@ export default function Home() {
       setDirectoryRefreshKey((k) => k + 1)
       return
     }
-    await fetchFeedForUser(u.id)
+    if (feedScopeRef.current === 'everything') {
+      await fetchEverythingFeed(u.id)
+    } else {
+      await fetchFeedForUser(u.id)
+    }
   }
+
+  const loadMoreFeed = useCallback(async () => {
+    const u = userRef.current
+    if (!u?.id || feedLoadingMore || !feedHasMore) return
+    if (isOnboardingFeedRef.current) return
+    if (postsRef.current.length === 0) return
+    setFeedLoadingMore(true)
+    try {
+      const offset = postsRef.current.length
+      if (feedScopeRef.current === 'everything') {
+        await fetchEverythingFeed(u.id, { offset, append: true })
+      } else {
+        await fetchFeedForUser(u.id, undefined, { offset, append: true })
+      }
+    } finally {
+      setFeedLoadingMore(false)
+    }
+  }, [feedLoadingMore, feedHasMore, fetchEverythingFeed, fetchFeedForUser])
+
+  const loadMoreFeedRef = useRef(loadMoreFeed)
+  loadMoreFeedRef.current = loadMoreFeed
 
   async function toggleBookmark(postId: string) {
     if (!user?.id) return
@@ -567,6 +665,8 @@ export default function Home() {
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
+      setFeedHasMore(false)
+      setFeedLoadingMore(false)
       setFeedBootstrapped(true)
       void loadPublicPreviewPostsRef.current()
       return
@@ -1089,7 +1189,12 @@ export default function Home() {
   }
 
   const showPeopleDirectory = Boolean(
-    user?.id && profile && feedBootstrapped && followingOtherCount !== null && followingOtherCount === 0,
+    user?.id &&
+      profile &&
+      feedBootstrapped &&
+      followingOtherCount !== null &&
+      followingOtherCount === 0 &&
+      feedScope === 'following',
   )
   // If we already have rows, always show them — do not require feedBootstrapped (it can flicker false during auth churn).
   const showSignedInPostFeed = Boolean(
@@ -1102,6 +1207,57 @@ export default function Home() {
   useEffect(() => {
     isOnboardingFeedRef.current = showPeopleDirectory
   }, [showPeopleDirectory])
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(HOME_FEED_SCOPE_KEY)
+      if (v === 'everything' || v === 'following') setFeedScope(v)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user?.id || !feedBootstrapped) return
+    if (feedScope === 'following' && followingOtherCount === null) return
+    setFeedHasMore(false)
+    void (async () => {
+      if (feedScope === 'everything') {
+        await fetchEverythingFeed(user.id)
+        return
+      }
+      if (followingOtherCount === 0) {
+        setPosts([])
+        setAuthorByUserId({})
+        await hydrateEngagement(user.id, [])
+        setFeedHasMore(false)
+        return
+      }
+      await fetchFeedForUser(user.id)
+    })()
+  }, [
+    user?.id,
+    feedScope,
+    feedBootstrapped,
+    followingOtherCount,
+    fetchEverythingFeed,
+    fetchFeedForUser,
+    hydrateEngagement,
+  ])
+
+  useEffect(() => {
+    if (!user?.id || !feedBootstrapped || showPeopleDirectory || !feedHasMore || feedLoadingMore) return
+    const el = feedSentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMoreFeedRef.current()
+      },
+      { root: null, rootMargin: '320px', threshold: 0 },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [user?.id, feedBootstrapped, showPeopleDirectory, feedHasMore, feedLoadingMore, posts.length])
 
   const avatarUrl =
     (profile?.avatar_url as string | undefined) || (user?.user_metadata?.avatar_url as string | undefined)
@@ -1922,6 +2078,52 @@ export default function Home() {
               </div>
             ) : null}
           </section>
+          {user && profile && feedBootstrapped && !needsUsername ? (
+            <div className="mb-8 flex justify-center" role="tablist" aria-label="Home feed">
+              <div className="flex w-full max-w-sm rounded-[4px] border border-[#dbdbdb] bg-white p-0.5 sm:max-w-md">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={feedScope === 'following'}
+                  onClick={() => {
+                    setFeedScope('following')
+                    try {
+                      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'following')
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className={`min-h-10 flex-1 rounded-[3px] px-4 py-2 text-center text-sm font-semibold transition-colors sm:px-6 ${
+                    feedScope === 'following'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  Following
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={feedScope === 'everything'}
+                  onClick={() => {
+                    setFeedScope('everything')
+                    try {
+                      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'everything')
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className={`min-h-10 flex-1 rounded-[3px] px-4 py-2 text-center text-sm font-semibold transition-colors sm:px-6 ${
+                    feedScope === 'everything'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900'
+                  }`}
+                >
+                  Everything
+                </button>
+              </div>
+            </div>
+          ) : null}
           {showPeopleDirectory ? (
             <div className="mb-10">
               <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
@@ -1940,7 +2142,11 @@ export default function Home() {
             <h2 className="text-sm font-medium text-zinc-600">Latest posts</h2>
           ) : null}
           {user && profile && feedBootstrapped && !showPeopleDirectory && posts.length === 0 ? (
-            <p className="py-12 text-center text-zinc-400">No posts yet. Follow someone or share something you like.</p>
+            <p className="py-12 text-center text-zinc-400">
+              {feedScope === 'everything'
+                ? 'Nothing here yet. Check back as people post.'
+                : 'No posts yet. Follow someone or share something you like.'}
+            </p>
           ) : null}
           {!user && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">Nothing posted yet. Sign in to share something you like.</p>
@@ -1995,6 +2201,19 @@ export default function Home() {
             </div>
             )
           })}
+          {user && !showPeopleDirectory && feedHasMore ? (
+            <div
+              ref={feedSentinelRef}
+              className="flex min-h-10 flex-col items-center justify-center gap-2 py-8"
+              aria-hidden={!feedLoadingMore}
+            >
+              {feedLoadingMore ? (
+                <span className="text-sm text-zinc-400">Loading more…</span>
+              ) : (
+                <span className="sr-only">More posts load as you scroll</span>
+              )}
+            </div>
+          ) : null}
         </section>
 
         <HomeLegalFooter />

@@ -1,20 +1,20 @@
-<mjml>
+<mjml lang="en">
   <!--
     HOW TO EDIT THIS TEMPLATE
     ─────────────────────────
-    • Loops.so upload: Root of the .zip must be index.mjml plus optional img/ for bundled images.
+    • Loops.so upload (match their sample zip): root `index.mjml` + `img/` folder; every image uses a relative path
+      `src="img/filename.jpg"` (see Loops sample_mjml). Loops ingests those files and rewrites URLs — remote https
+      URLs often break on upload. Rebuild zip: `npm run email:zip-loops`.
       https://loops.so/docs/creating-emails/uploading-custom-email
-      In Loops: editor → Code → upload the .zip. Footer must include href="{unsubscribe_link}" (done below).
-      Example zip from repo root: cd email/loops-things-of-the-week && zip -r things-of-the-week-loops.zip index.mjml img
-    • Post hero images: in each block below, find <mj-image … src="…" /> — change `src` to any full https URL
-      (direct .jpg/.png from the post, Supabase public URL, or …/opengraph-image). If images look blank in a
-      browser, open the file via a local server (e.g. `npx serve email/loops-things-of-the-week`) — some clients
-      block hotlinking when using file://.
-    • Post author row: same block — edit the <mj-table> row: profile link, `img src` (avatar), and @handle text (@handles are normal weight).
-    • Images: set <mj-image src="https://…" /> to any public URL (Supabase post-images, opengraph-image, etc.). To bundle files in the Loops .zip,
-      put them under img/ and use src="img/yourfile.jpg" in MJML (Loops rewrites hosted URLs on upload).
-    • Preview: do NOT rely on double‑clicking preview.html (file://). Remote images often fail from file URLs. Run: npm run email:serve-preview
-      then open http://localhost:4173/preview.html in your browser.
+    • New images: save under `email/loops-things-of-the-week/img/` and reference as `img/yourfile.jpg` in MJML. Loops caps
+      uploads at ~10MB — resize very large camera photos (long edge ~1040px is plenty for a 520px-wide hero). iPhone
+      shots are often Display P3; some importers show them black. After swapping hero files, run
+      `npm run email:normalize-hero-images` (bakes EXIF orientation, strips metadata, sRGB JPEG).
+      Current @carrie / @fredwilson hero sources (re-download then normalize):
+      https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/e11cb12f-3593-4c65-951e-2f2e39c2a791/1774667043705-zp524vsw.jpeg
+      https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/e27be3d9-d05e-45cf-995f-6d492b3ccc53/1774648566573-ge9nzbqz.jpg
+    • Post author row: edit the <mj-table> row — profile link, avatar `img src`, @handle (@handles normal weight).
+    • Preview: run `npm run email:serve-preview` then http://localhost:4173/preview.html (file:// breaks relative img/).
     • Article & Spotify: most inboxes won’t run embeds; use the post’s opengraph-image as the hero and link to the post. Copy any caption /
       commentary from the app into the optional mj-text blocks marked ARTICLE_POST_CAPTION / EMMA_SPOTIFY_CAPTION below those cards.
     • Person of the Week bio: search for PERSON_OF_THE_WEEK_BIO — one <mj-text> you can edit like normal copy.
@@ -113,14 +113,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/aweissman" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocJ8uHPFecr2JRCcXHUDy5AEKDq6n93Fugpq_ia0_Uddlv2H-zZV=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
+                <img src="img/avatar-aweissman.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@aweissman</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1a219d85-d60f-43bd-bd6b-c768fedaaf14/1774896414570-jr82g67r.jpeg"
+          src="img/hero-aweissman.jpeg"
           alt=""
           href="https://thingsilike.app/aweissman/dd3fe596-9ecb-417a-ad85-ba92bfc40bab"
           border-radius="6px"
@@ -146,14 +146,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/carrie" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocLMx71h9xRsCGlhp7aKe2qfo1oENbDfzCj8jtrRNu2JDpnfZK7R=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
+                <img src="img/avatar-carrie.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@carrie</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/e11cb12f-3593-4c65-951e-2f2e39c2a791/1774667043705-zp524vsw.jpeg"
+          src="img/hero-carrie.jpeg"
           alt=""
           href="https://thingsilike.app/carrie/2a7ebecc-0420-41e7-b70a-d7fdf0116e1e"
           border-radius="6px"
@@ -176,14 +176,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/ilikethings" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocJMtRabUfVbMM6GMc16EfnKlPLDTNrRM1c7spqlWSArdu9Isp5B=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
+                <img src="img/avatar-ilikethings.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@ilikethings</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://www.warhol.org/wp-content/uploads/2015/05/1998-1-1350_int_01_1500px1.jpg"
+          src="img/hero-ilikethings.jpg"
           alt="Andy Warhol, Champagne Cocktail"
           href="https://thingsilike.app/ilikethings/5a118d6d-74e4-4ff9-8523-e118e0d86ef4"
           border-radius="6px"
@@ -206,14 +206,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/fredwilson" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocJ7COfEZpFs4UOAKrAkhM9xqomJ38kIDU8w3SMEL0dn92Q_31uf=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
+                <img src="img/avatar-fredwilson.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@fredwilson</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/e27be3d9-d05e-45cf-995f-6d492b3ccc53/1774648566573-ge9nzbqz.jpg"
+          src="img/hero-fredwilson.jpg"
           alt=""
           href="https://thingsilike.app/fredwilson/2ce423cc-07a7-4893-b79f-20eb82d685b1"
           border-radius="6px"
@@ -236,14 +236,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/tdevane" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/avatar/1774989008897-4s2oiy.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;object-fit:cover;display:inline-block;" />
+                <img src="img/avatar-tdevane.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;object-fit:cover;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@tdevane</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/1e98530f-1a3a-491c-85ea-57fb42daa5ca/1774989692480-uxsj5f51.png"
+          src="img/hero-tdevane.jpg"
           alt="Record Stores from where I grew up"
           href="https://thingsilike.app/tdevane/818b9a0f-ecf2-4fa5-b5e1-4c2ef14f6589"
           border-radius="6px"
@@ -266,14 +266,14 @@
             </td>
             <td style="padding:0 0 12px 0;vertical-align:middle;text-align:right;width:50%;">
               <a href="https://thingsilike.app/emmacooper" style="text-decoration:none;color:#3f3f46;">
-                <img src="https://lh3.googleusercontent.com/a/ACg8ocIGSg3XxMdcZfupzM3reyCzLXsjDAs-tosrZzINVKkY2bt0aGAIUA=s96-c" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
+                <img src="img/avatar-emma.jpg" width="28" height="28" alt="" style="border-radius:50%;vertical-align:middle;margin-right:8px;border:1px solid #e4e4e7;display:inline-block;" />
                 <span style="font-size:14px;font-weight:400;vertical-align:middle;">@emmacooper</span>
               </a>
             </td>
           </tr>
         </mj-table>
         <mj-image
-          src="https://tjrwxvzoudiqfjpmgdoe.supabase.co/storage/v1/object/public/post-images/32dc4118-f46f-4b54-a5f2-380657c9172b/1775114542503-896wal8o.jpeg"
+          src="img/hero-emma.jpeg"
           alt="Dreams in Rose. Sarah Vrieling 2026"
           href="https://thingsilike.app/emmacooper/49017971-cf14-4155-a9fd-80c60eaa0a8b"
           border-radius="6px"
@@ -298,7 +298,7 @@
       <mj-column padding="0" background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7">
         <mj-text align="center" padding="24px 20px 12px 20px">
           <a href="https://thingsilike.app/emmacooper" target="_blank" style="text-decoration:none;">
-            <img src="https://lh3.googleusercontent.com/a/ACg8ocIGSg3XxMdcZfupzM3reyCzLXsjDAs-tosrZzINVKkY2bt0aGAIUA=s96-c" width="56" height="56" alt="" style="display:inline-block;border-radius:28px;border:1px solid #e4e4e7;width:56px;height:56px;" />
+            <img src="img/avatar-emma.jpg" width="56" height="56" alt="" style="display:inline-block;border-radius:28px;border:1px solid #e4e4e7;width:56px;height:56px;" />
           </a>
         </mj-text>
         <mj-text align="center" padding="0 20px 14px 20px">
@@ -325,11 +325,14 @@
       </mj-column>
     </mj-section>
 
+    <!-- Loops requires href="{unsubscribe_link}" in MJML (see https://loops.so/docs/creating-emails/uploading-custom-email#add-an-unsubscribe-url). Use mj-raw so { } is not altered by mj-text. -->
     <mj-section padding="32px 24px 48px">
       <mj-column>
-        <mj-text align="center" font-size="12px" color="#a1a1aa" line-height="1.6">
-          <a href="{unsubscribe_link}" style="color:#71717a;">Unsubscribe</a>
-        </mj-text>
+        <mj-raw>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:12px;line-height:1.6;text-align:center;color:#a1a1aa;">
+            <a href="{unsubscribe_link}" style="color:#71717a;text-decoration:underline;">Unsubscribe</a>
+          </div>
+        </mj-raw>
       </mj-column>
     </mj-section>
   </mj-body>

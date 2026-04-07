@@ -43,11 +43,12 @@ export async function fetchAllPostsForAuthorIds(supabase: SupabaseClient, author
   return all
 }
 
-/** Most recent posts across the given authors (feed). Bounded — avoids loading entire history client-side. */
+/** Most recent posts across the given authors (feed). Use `offset` for pagination (inclusive range). */
 export async function fetchRecentPostsForAuthorIds(
   supabase: SupabaseClient,
   authorIds: string[],
   limit: number,
+  offset = 0,
 ): Promise<Post[]> {
   if (authorIds.length === 0 || limit <= 0) return []
   const { data, error } = await supabase
@@ -55,7 +56,19 @@ export async function fetchRecentPostsForAuthorIds(
     .select('*')
     .in('user_id', authorIds)
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
+  if (error) throw new Error(error.message)
+  return (data || []) as Post[]
+}
+
+/** Newest posts across the whole app (network-wide feed). Use `offset` for pagination. */
+export async function fetchRecentPostsGlobal(supabase: SupabaseClient, limit: number, offset = 0): Promise<Post[]> {
+  if (limit <= 0) return []
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
   if (error) throw new Error(error.message)
   return (data || []) as Post[]
 }

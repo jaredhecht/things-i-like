@@ -2119,7 +2119,7 @@ export default function Home() {
                       : 'text-[#8e8e8e] hover:bg-zinc-100 hover:text-zinc-900'
                   }`}
                 >
-                  Everything
+                  EveryThing
                 </button>
               </div>
             </div>

@@ -87,7 +87,7 @@ export function FollowButton({
   }
 
   if (loading) {
-    return <span className="inline-block h-9 w-24 animate-pulse rounded-full bg-zinc-200" aria-hidden />
+    return <span className="inline-block h-7 w-[4.25rem] animate-pulse rounded-full bg-zinc-200" aria-hidden />
   }
 
   if (!user) {
@@ -95,7 +95,7 @@ export function FollowButton({
       <button
         type="button"
         onClick={() => void signInWithGoogle()}
-        className="rounded-full border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800"
+        className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-200/90"
       >
         Follow
       </button>
@@ -132,8 +132,10 @@ export function FollowButton({
       type="button"
       disabled={busy}
       onClick={() => void toggleFollow()}
-      className={`rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
-        following ? 'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50' : 'border border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800'
+      className={`rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
+        following
+          ? 'border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+          : 'border border-zinc-200 bg-zinc-100 text-zinc-600 hover:bg-zinc-200/90'
       }`}
     >
       {busy ? '…' : following ? 'Following' : 'Follow'}

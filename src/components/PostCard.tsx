@@ -349,7 +349,7 @@ export function PostCard({
             >
               <RebloggerAvatar src={authorAvatarUrl} username={authorUsername} />
               <div className="min-w-0">
-                <p className="truncate font-semibold text-zinc-900 group-hover:underline">@{authorUsername}</p>
+                <p className="truncate font-normal text-zinc-900 group-hover:underline">@{authorUsername}</p>
                 <p className="text-xs text-zinc-500">Rething</p>
               </div>
             </Link>
@@ -369,7 +369,7 @@ export function PostCard({
                   {authorUsername.slice(0, 1).toUpperCase()}
                 </div>
               )}
-              {showAuthorHandle ? <span className="truncate font-semibold text-zinc-900">@{authorUsername}</span> : null}
+              {showAuthorHandle ? <span className="truncate font-normal text-zinc-900">@{authorUsername}</span> : null}
             </Link>
           ) : null}
         </div>

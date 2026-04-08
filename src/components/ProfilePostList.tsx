@@ -7,13 +7,18 @@ import { PostCard } from '@/src/components/PostCard'
 import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
+import { authorMetaForRethingFromUsername, type RethingAuthorMeta } from '@/src/lib/merge-rething-author-profiles'
 
 export function ProfilePostList({
   profileUsername,
+  profileAvatarUrl,
+  authorByUserId,
   posts,
   initialLikeCounts,
 }: {
   profileUsername: string
+  profileAvatarUrl: string | null
+  authorByUserId: Record<string, RethingAuthorMeta>
   posts: Post[]
   initialLikeCounts: Record<string, number>
 }) {
@@ -199,11 +204,15 @@ export function ProfilePostList({
         const n = likeCounts[post.id] ?? 0
         const canInteract = Boolean(userId && post.user_id && post.user_id !== userId)
         const isOwner = Boolean(userId && post.user_id === userId)
+        const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)
         return (
           <div key={post.id}>
             <PostCard
               post={post}
               isOwner={isOwner}
+              authorUsername={profileUsername}
+              authorAvatarUrl={profileAvatarUrl}
+              rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
               showAuthor={false}
               profileLikeBar
               likeCount={n}

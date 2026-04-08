@@ -8,6 +8,7 @@ import type { ElsewhereLinkRow } from '@/src/lib/elsewhere'
 import { fetchAllPostsForUserId } from '@/src/lib/posts-batched'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import type { Post } from '@/src/lib/post-helpers'
+import { mergeProfilesForRethingUsernames, type RethingAuthorMeta } from '@/src/lib/merge-rething-author-profiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const supabase = createSupabaseServer()
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, username, avatar_url, bio, elsewhere_visible')
+    .select('id, username, display_name, avatar_url, bio, elsewhere_visible')
     .eq('username', slug)
     .maybeSingle()
 
@@ -103,6 +104,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     }
   }
 
+  const authorByUserId: Record<string, RethingAuthorMeta> = {
+    [profile.id]: {
+      username: profile.username as string,
+      display_name: typeof profile.display_name === 'string' ? profile.display_name : null,
+      avatar_url: typeof profile.avatar_url === 'string' ? profile.avatar_url : null,
+    },
+  }
+  await mergeProfilesForRethingUsernames(supabase, list, authorByUserId)
+  const profileAvatarUrl = typeof profile.avatar_url === 'string' ? profile.avatar_url : null
+
   return (
     <main className="min-h-screen bg-[#fafafa]">
       <div className="mx-auto max-w-2xl px-4 py-10">
@@ -151,12 +162,21 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           <ProfileModuleRails
             profileUserId={profile.id}
             profileUsername={profile.username}
+            profileAvatarUrl={profileAvatarUrl}
+            authorByUserId={authorByUserId}
             rails={moduleRails}
             initialLikeCounts={initialLikeCounts}
           />
         ) : null}
 
-        <ProfilePostList key={profile.id} profileUsername={profile.username} posts={list} initialLikeCounts={initialLikeCounts} />
+        <ProfilePostList
+          key={profile.id}
+          profileUsername={profile.username}
+          profileAvatarUrl={profileAvatarUrl}
+          authorByUserId={authorByUserId}
+          posts={list}
+          initialLikeCounts={initialLikeCounts}
+        />
       </div>
     </main>
   )

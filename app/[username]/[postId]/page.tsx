@@ -7,6 +7,7 @@ import type { Post } from '@/src/lib/post-helpers'
 import { buildPublicPostUrl, isPublicPostIdParam } from '@/src/lib/public-post-url'
 import { getSiteOrigin } from '@/src/lib/site-origin'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
+import { authorMetaForRethingFromUsername, mergeProfilesForRethingUsernames } from '@/src/lib/merge-rething-author-profiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -133,6 +134,15 @@ export default async function PublicPostPage({ params }: { params: Promise<{ use
 
   const post = row as Post
   const avatarUrl = typeof profile.avatar_url === 'string' ? profile.avatar_url.trim() : ''
+  const authorLookup = {
+    [profile.id as string]: {
+      username: profile.username as string,
+      display_name: typeof profile.display_name === 'string' ? profile.display_name : null,
+      avatar_url: avatarUrl || null,
+    },
+  }
+  await mergeProfilesForRethingUsernames(supabase, [post], authorLookup)
+  const rethingOrig = authorMetaForRethingFromUsername(authorLookup, post.rething_from_username)
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
@@ -173,6 +183,7 @@ export default async function PublicPostPage({ params }: { params: Promise<{ use
           isOwner={false}
           authorUsername={profile.username as string}
           authorAvatarUrl={avatarUrl || null}
+          rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
           showAuthor={false}
           shareUrl={shareUrl}
         />

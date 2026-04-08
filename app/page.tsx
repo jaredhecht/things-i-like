@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
 import { ComposerModuleChips } from '../src/components/ComposerModuleChips'
@@ -38,6 +38,10 @@ import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
 import { buildRethingSnapshotForInsert } from '../src/lib/rething-chain'
 import { fetchRethingCountsForPostIds } from '../src/lib/rething-counts'
+import {
+  authorMetaForRethingFromUsername,
+  mergeProfilesForRethingUsernames,
+} from '../src/lib/merge-rething-author-profiles'
 import { supabase } from '../src/lib/supabase'
 import {
   cacheGooglePlacePhoto,
@@ -76,6 +80,8 @@ const PROFILE_IN_CHUNK = 100
 /** Signed-in dashboard: page size for following + everything feeds (infinite scroll loads more). */
 const FEED_PAGE_SIZE = 20
 const HOME_FEED_SCOPE_KEY = 'til-home-feed-scope'
+/** Per-user localStorage: user finished/skimmed the “pick people” onboarding without forcing hide on first follow. */
+const homeOnboardingPickDoneKey = (userId: string) => `til_onboarding_pick_done:${userId}`
 type HomeFeedScope = 'following' | 'everything'
 type FeedFetchOptions = { offset?: number; append?: boolean }
 
@@ -135,6 +141,9 @@ export default function Home() {
   const textEditorRef = useRef<HTMLDivElement | null>(null)
   const captionEditorRef = useRef<HTMLDivElement | null>(null)
   const imageFileInputRef = useRef<HTMLInputElement>(null)
+  const placeComboRef = useRef<HTMLDivElement | null>(null)
+  /** After picking a prediction, skip autocomplete until the user edits the field (otherwise the debounced effect reopens the list). */
+  const placeAutocompleteLockedRef = useRef(false)
   const isOnboardingFeedRef = useRef(false)
   /** Latest signed-in user for callbacks that must not call `getUser()` (avoids auth lock races on startup). */
   const userRef = useRef<User | null>(null)
@@ -143,10 +152,14 @@ export default function Home() {
   const feedScopeRef = useRef<HomeFeedScope>('following')
   feedScopeRef.current = feedScope
   const [followingOtherCount, setFollowingOtherCount] = useState<number | null>(null)
+  /** Others this user follows (for inline Follow on posts from non-followed authors in Following / EveryThing). */
+  const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(() => new Set())
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
   const [feedHasMore, setFeedHasMore] = useState(false)
   const [feedLoadingMore, setFeedLoadingMore] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
+  /** Following tab “pick people” panel: stays open until dismissed, even after the first follow. */
+  const [pickPeopleVisible, setPickPeopleVisible] = useState(false)
   const postsRef = useRef<Post[]>([])
   postsRef.current = posts
   const feedSentinelRef = useRef<HTMLDivElement | null>(null)
@@ -353,6 +366,7 @@ export default function Home() {
         }
       }
     }
+    await mergeProfilesForRethingUsernames(supabase, picked, map)
     setPosts(picked)
     setAuthorByUserId(map)
   }, [])
@@ -392,6 +406,7 @@ export default function Home() {
           }
         }
       }
+      await mergeProfilesForRethingUsernames(supabase, list, map)
       const hasMore = list.length === FEED_PAGE_SIZE
       if (append) {
         setPosts((prev) => {
@@ -445,6 +460,7 @@ export default function Home() {
           }
         }
       }
+      await mergeProfilesForRethingUsernames(supabase, list, map)
       const hasMore = list.length === FEED_PAGE_SIZE
       if (append) {
         setPosts((prev) => {
@@ -473,8 +489,12 @@ export default function Home() {
   const runHomeBootstrap = useCallback(async (userId: string) => {
     const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     if (followErr) console.error('Error fetching follows (bootstrap):', followErr)
-    const n = (follows || []).length
+    const rows = follows || []
+    const n = rows.length
     setFollowingOtherCount(n)
+    setFollowingUserIds(
+      new Set(rows.map((f) => f.following_id as string).filter((id): id is string => Boolean(id))),
+    )
   }, [])
 
   const loadPublicPreviewPostsRef = useRef(loadPublicPreviewPosts)
@@ -491,9 +511,43 @@ export default function Home() {
       console.error('refetchFollowingCount:', error)
       return
     }
-    setFollowingOtherCount((data || []).length)
-    setDirectoryRefreshKey((k) => k + 1)
+    const rows = data || []
+    setFollowingOtherCount(rows.length)
+    setFollowingUserIds(
+      new Set(rows.map((f) => f.following_id as string).filter((id): id is string => Boolean(id))),
+    )
   }, [user?.id])
+
+  const dismissPickPeopleOnboarding = useCallback(() => {
+    const uid = user?.id
+    if (!uid) return
+    try {
+      localStorage.setItem(homeOnboardingPickDoneKey(uid), '1')
+    } catch {
+      /* ignore */
+    }
+    setPickPeopleVisible(false)
+  }, [user?.id])
+
+  const switchFeedToFollowing = useCallback(() => {
+    setFeedScope('following')
+    try {
+      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'following')
+    } catch {
+      /* ignore */
+    }
+    dismissPickPeopleOnboarding()
+  }, [dismissPickPeopleOnboarding])
+
+  const switchFeedToEverything = useCallback(() => {
+    setFeedScope('everything')
+    try {
+      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'everything')
+    } catch {
+      /* ignore */
+    }
+    dismissPickPeopleOnboarding()
+  }, [dismissPickPeopleOnboarding])
 
   async function fetchFeed() {
     const u = userRef.current
@@ -665,6 +719,7 @@ export default function Home() {
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
       setFollowingOtherCount(null)
+      setFollowingUserIds(new Set())
       setFeedHasMore(false)
       setFeedLoadingMore(false)
       setFeedBootstrapped(true)
@@ -906,6 +961,7 @@ export default function Home() {
 
   useEffect(() => {
     if (panel === 'place') return
+    placeAutocompleteLockedRef.current = false
     setPlaceSearchInput('')
     setPlacePredictions([])
     setPlaceDetails(null)
@@ -921,6 +977,7 @@ export default function Home() {
       setPlacePredictions([])
       return
     }
+    if (placeAutocompleteLockedRef.current) return
     let cancelled = false
     const t = window.setTimeout(() => {
       void (async () => {
@@ -1189,12 +1246,7 @@ export default function Home() {
   }
 
   const showPeopleDirectory = Boolean(
-    user?.id &&
-      profile &&
-      feedBootstrapped &&
-      followingOtherCount !== null &&
-      followingOtherCount === 0 &&
-      feedScope === 'following',
+    user?.id && profile && feedBootstrapped && feedScope === 'following' && pickPeopleVisible,
   )
   // If we already have rows, always show them — do not require feedBootstrapped (it can flicker false during auth churn).
   const showSignedInPostFeed = Boolean(
@@ -1207,6 +1259,28 @@ export default function Home() {
   useEffect(() => {
     isOnboardingFeedRef.current = showPeopleDirectory
   }, [showPeopleDirectory])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setPickPeopleVisible(false)
+    }
+  }, [user?.id])
+
+  useLayoutEffect(() => {
+    const uid = user?.id
+    if (!uid || !feedBootstrapped || followingOtherCount === null) return
+    try {
+      if (localStorage.getItem(homeOnboardingPickDoneKey(uid)) === '1') {
+        setPickPeopleVisible(false)
+        return
+      }
+    } catch {
+      /* ignore */
+    }
+    if (followingOtherCount === 0) {
+      setPickPeopleVisible(true)
+    }
+  }, [user?.id, feedBootstrapped, followingOtherCount])
 
   useEffect(() => {
     try {
@@ -1556,27 +1630,39 @@ export default function Home() {
 
                   {panel === 'place' ? (
                     <div className="space-y-4">
-                      <div className="relative">
+                      <div className="relative" ref={placeComboRef}>
                         <p className="mb-1 text-xs font-medium text-[#8e8e8e]">Search Google Maps</p>
                         <input
                           type="text"
                           value={placeSearchInput}
-                          onChange={(e) => setPlaceSearchInput(e.target.value)}
+                          onChange={(e) => {
+                            placeAutocompleteLockedRef.current = false
+                            setPlaceSearchInput(e.target.value)
+                          }}
+                          onBlur={() => {
+                            requestAnimationFrame(() => {
+                              const root = placeComboRef.current
+                              if (!root || root.contains(document.activeElement)) return
+                              setPlacePredictions([])
+                            })
+                          }}
                           placeholder="Restaurant, park, neighborhood…"
                           disabled={placeDetailsLoading}
                           className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
                         />
                         {placePredictions.length > 0 ? (
-                          <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-md border border-[#dbdbdb] bg-white py-1 shadow-lg">
+                          <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-md border border-[#dbdbdb] bg-white py-1 shadow-lg" role="listbox">
                             {placePredictions.map((p) => (
                               <li key={p.placeId}>
                                 <button
                                   type="button"
                                   className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                                  onMouseDown={(e) => e.preventDefault()}
                                   onClick={() => {
+                                    placeAutocompleteLockedRef.current = true
+                                    setPlacePredictions([])
+                                    setPlaceSearchInput(p.mainText)
                                     void (async () => {
-                                      setPlaceSearchInput(p.mainText)
-                                      setPlacePredictions([])
                                       setPlaceDetailsLoading(true)
                                       try {
                                         const d = await fetchPlaceDetails(p.placeId)
@@ -1612,6 +1698,7 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => {
+                                placeAutocompleteLockedRef.current = false
                                 setPlaceDetails(null)
                                 setPlaceFreeformName(placeDetails.name)
                               }}
@@ -2096,14 +2183,7 @@ export default function Home() {
                   type="button"
                   role="tab"
                   aria-selected={feedScope === 'following'}
-                  onClick={() => {
-                    setFeedScope('following')
-                    try {
-                      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'following')
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
+                  onClick={switchFeedToFollowing}
                   className={`min-h-10 flex-1 rounded-[3px] px-4 py-2 text-center text-sm font-semibold transition-colors sm:px-6 ${
                     feedScope === 'following'
                       ? 'bg-zinc-900 text-white'
@@ -2116,14 +2196,7 @@ export default function Home() {
                   type="button"
                   role="tab"
                   aria-selected={feedScope === 'everything'}
-                  onClick={() => {
-                    setFeedScope('everything')
-                    try {
-                      localStorage.setItem(HOME_FEED_SCOPE_KEY, 'everything')
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
+                  onClick={switchFeedToEverything}
                   className={`min-h-10 flex-1 rounded-[3px] px-4 py-2 text-center text-sm font-semibold transition-colors sm:px-6 ${
                     feedScope === 'everything'
                       ? 'bg-zinc-900 text-white'
@@ -2137,12 +2210,42 @@ export default function Home() {
           ) : null}
           {showPeopleDirectory ? (
             <div className="mb-10">
-              <h2 className="mb-3 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
+              <h2 className="mb-2 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
+              <p className="mb-1 max-w-xl text-sm leading-relaxed text-zinc-600">
+                Follow as many people as you like. Use{' '}
+                <button
+                  type="button"
+                  onClick={switchFeedToFollowing}
+                  className="font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500"
+                >
+                  Following
+                </button>{' '}
+                to see their posts and{' '}
+                <button
+                  type="button"
+                  onClick={switchFeedToEverything}
+                  className="font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500"
+                >
+                  EveryThing
+                </button>{' '}
+                to see all the things.
+              </p>
               <PeopleWhoLikeThingsDirectory
                 currentUserId={user.id}
                 refreshKey={directoryRefreshKey}
                 onFollowChanged={() => void refetchFollowingCount()}
+                onboardingOnly
               />
+              <div className="mt-6 flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-zinc-600">Ready to see your feed?</p>
+                <button
+                  type="button"
+                  onClick={dismissPickPeopleOnboarding}
+                  className="shrink-0 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
+                >
+                  Continue to my feed
+                </button>
+              </div>
             </div>
           ) : null}
           </>
@@ -2165,6 +2268,15 @@ export default function Home() {
           {(!user || showSignedInPostFeed) &&
             posts.map((post) => {
             const author = post.user_id ? authorByUserId[post.user_id] : undefined
+            const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)
+            const canInlineFollowAuthor = Boolean(
+              user?.id &&
+                post.user_id &&
+                post.user_id !== user.id &&
+                author?.username &&
+                followingOtherCount !== null &&
+                !followingUserIds.has(post.user_id),
+            )
             return (
             <div key={post.id}>
               <PostCard
@@ -2172,6 +2284,13 @@ export default function Home() {
                 isOwner={user?.id === post.user_id}
                 authorUsername={author?.username ?? null}
                 authorAvatarUrl={author?.avatar_url ?? null}
+                rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
+                authorFollow={
+                  canInlineFollowAuthor && post.user_id && author?.username
+                    ? { userId: post.user_id, username: author.username }
+                    : null
+                }
+                onAuthorFollowChange={() => void refetchFollowingCount()}
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}

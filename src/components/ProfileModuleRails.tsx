@@ -11,6 +11,7 @@ import { classifyPostAfterSave } from '@/src/lib/modules-ui'
 import type { Post } from '@/src/lib/post-helpers'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 import { supabase } from '@/src/lib/supabase'
+import { authorMetaForRethingFromUsername, type RethingAuthorMeta } from '@/src/lib/merge-rething-author-profiles'
 
 /** Matches profile page main background for scroll-edge fades. */
 const RAIL_PAGE_BG = '#fafafa'
@@ -86,11 +87,15 @@ export type ProfileModuleRail = { id: string; name: string; posts: Post[] }
 export function ProfileModuleRails({
   profileUserId,
   profileUsername,
+  profileAvatarUrl,
+  authorByUserId,
   rails,
   initialLikeCounts,
 }: {
   profileUserId: string
   profileUsername: string
+  profileAvatarUrl: string | null
+  authorByUserId: Record<string, RethingAuthorMeta>
   rails: ProfileModuleRail[]
   initialLikeCounts: Record<string, number>
 }) {
@@ -310,11 +315,15 @@ export function ProfileModuleRails({
               const n = likeCounts[post.id] ?? 0
               const canInteract = Boolean(userId && post.user_id && post.user_id !== userId)
               const busyRemove = removeBusyKey === `${rail.id}:${post.id}`
+              const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)
               return (
                 <div key={post.id} className="w-[min(100vw-2rem,320px)] shrink-0">
                   <PostCard
                     post={post}
                     isOwner={isOwnProfile}
+                    authorUsername={profileUsername}
+                    authorAvatarUrl={profileAvatarUrl}
+                    rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
                     showAuthor={false}
                     profileLikeBar
                     likeCount={n}

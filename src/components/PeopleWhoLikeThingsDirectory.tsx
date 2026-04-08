@@ -17,10 +17,13 @@ export function PeopleWhoLikeThingsDirectory({
   currentUserId,
   refreshKey,
   onFollowChanged,
+  onboardingOnly = false,
 }: {
   currentUserId: string
   refreshKey: number
   onFollowChanged: () => void
+  /** When true (home pick-people onboarding), only list users who have posted at least once. */
+  onboardingOnly?: boolean
 }) {
   const [rows, setRows] = useState<DirectoryProfileRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,9 +54,9 @@ export function PeopleWhoLikeThingsDirectory({
         }
       })
       .filter((r) => r.id && r.id !== currentUserId)
-    setRows(parsed)
+    setRows(onboardingOnly ? parsed.filter((r) => r.post_count >= 1) : parsed)
     setLoading(false)
-  }, [currentUserId])
+  }, [currentUserId, onboardingOnly])
 
   useEffect(() => {
     void load()

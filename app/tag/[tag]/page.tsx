@@ -4,6 +4,7 @@ import { normalizeTagSlug } from '@/src/lib/post-tags'
 import { fetchRecentPostsWithTag } from '@/src/lib/posts-batched'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import type { Post } from '@/src/lib/post-helpers'
+import { mergeProfilesForRethingUsernames } from '@/src/lib/merge-rething-author-profiles'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,7 @@ export default async function TagPage({ params }: { params: Promise<{ tag: strin
       }
     }
   }
+  await mergeProfilesForRethingUsernames(supabase, list, authorMap)
 
   return <TagFeed tag={slug} initialPosts={list} initialAuthors={authorMap} />
 }

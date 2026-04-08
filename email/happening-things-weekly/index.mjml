@@ -1,0 +1,201 @@
+<mjml>
+  <!--
+    HAPPENING THINGS — Weekly email for Things I Like (Loops LOOP + event, not transactional)
+
+    Cron fires POST /v1/events/send with eventName `happening_things_weekly` (override via env).
+    In Loops: create the event + add EVERY property below, then a Loop triggered by that event.
+
+    EVENT PROPERTIES (all scalar — register in Loops → Events → happening_things_weekly):
+      newFollowersCount, newFollowersOverflow, notificationsUrl,
+      newLikesCount, followingPostsCount, followingUrl,
+      networkPostsCount, everythingUrl, newMembersCount, first_posters_overflow,
+      follower_1_username … follower_10_username,
+      follower_1_avatar_url … follower_10_avatar_url,
+      follower_1_profile_url … follower_10_profile_url,
+      firstposter_1_username … firstposter_15_username,
+      firstposter_1_avatar_url … firstposter_15_avatar_url,
+      firstposter_1_profile_url … firstposter_15_profile_url
+
+    Empty follower_* / firstposter_* strings mean “no row”; overflow uses first_posters_overflow + newMembersCount.
+  -->
+  <mj-head>
+    <mj-title>Things are Happening</mj-title>
+    <mj-preview>What&#x2019;s been happening on Things I Like this week.</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" />
+      <mj-text color="#18181b" font-size="16px" line-height="1.55" />
+      <mj-button background-color="#18181b" color="#ffffff" font-size="14px" font-weight="600" inner-padding="12px 24px" border-radius="9999px" />
+    </mj-attributes>
+    <mj-style>
+      @font-face {
+        font-family: 'Geist';
+        font-style: normal;
+        font-weight: 300;
+        font-display: swap;
+        src: url('https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/Geist-Light.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Geist';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url('https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/Geist-SemiBold.woff2') format('woff2');
+      }
+      .section-label {
+        color: #71717a !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.14em !important;
+        text-transform: uppercase !important;
+      }
+      .section-heading {
+        color: #18181b !important;
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        line-height: 1.35 !important;
+      }
+      .section-link {
+        color: #18181b !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        text-decoration: none !important;
+        border-bottom: 1px solid #18181b !important;
+        padding-bottom: 1px !important;
+      }
+      .follower-row a {
+        color: #18181b !important;
+        text-decoration: none !important;
+      }
+    </mj-style>
+  </mj-head>
+
+  <mj-body background-color="#fafafa" width="600px">
+
+    <mj-section padding="40px 24px 8px">
+      <mj-column>
+        <mj-text align="center" font-family="Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-weight="300" font-size="28px" color="#18181b" line-height="1.2" letter-spacing="-0.02em" padding-bottom="8px">
+          Things I Like
+        </mj-text>
+        <mj-text align="center" font-family="Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-weight="600" font-size="12px" color="#71717a" line-height="1.35" padding-top="0" padding-bottom="4px" letter-spacing="0.16em" text-transform="uppercase">
+          Things are Happening
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+    {{#if newFollowersCount}}
+    <mj-section padding="24px 16px 8px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="24px">
+        <mj-text css-class="section-label" padding-bottom="6px">New followers</mj-text>
+        <mj-text css-class="section-heading" padding-bottom="16px">
+          {{#if (eq newFollowersCount 1)}}You have 1 new follower{{else}}You have {{newFollowersCount}} new followers{{/if}}
+        </mj-text>
+
+        {{#if follower_1_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_1_profile_url}}" style="text-decoration:none;"><img src="{{follower_1_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_1_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_1_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_2_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_2_profile_url}}" style="text-decoration:none;"><img src="{{follower_2_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_2_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_2_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_3_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_3_profile_url}}" style="text-decoration:none;"><img src="{{follower_3_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_3_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_3_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_4_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_4_profile_url}}" style="text-decoration:none;"><img src="{{follower_4_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_4_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_4_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_5_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_5_profile_url}}" style="text-decoration:none;"><img src="{{follower_5_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_5_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_5_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_6_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_6_profile_url}}" style="text-decoration:none;"><img src="{{follower_6_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_6_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_6_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_7_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_7_profile_url}}" style="text-decoration:none;"><img src="{{follower_7_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_7_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_7_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_8_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_8_profile_url}}" style="text-decoration:none;"><img src="{{follower_8_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_8_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_8_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_9_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_9_profile_url}}" style="text-decoration:none;"><img src="{{follower_9_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_9_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_9_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if follower_10_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 12px 0" css-class="follower-row"><tr><td style="width:40px;vertical-align:middle;padding:0;"><a href="{{follower_10_profile_url}}" style="text-decoration:none;"><img src="{{follower_10_avatar_url}}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 12px;text-align:left;"><a href="{{follower_10_profile_url}}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:400;">@{{follower_10_username}}</a></td></tr></mj-table>{{/if}}
+
+        {{#if newFollowersOverflow}}
+        <mj-text padding="8px 0 0 0" font-size="13px">
+          <a href="{{notificationsUrl}}" style="color:#71717a;text-decoration:none;border-bottom:1px solid #d4d4d8;">and {{newFollowersOverflow}} more</a>
+        </mj-text>
+        {{/if}}
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    {{#if newLikesCount}}
+    <mj-section padding="8px 16px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="24px">
+        <mj-text css-class="section-label" padding-bottom="6px">New likes</mj-text>
+        <mj-text css-class="section-heading" padding-bottom="14px">
+          {{#if (eq newLikesCount 1)}}Your things got 1 new like{{else}}Your things got {{newLikesCount}} new likes{{/if}}
+        </mj-text>
+        <mj-text padding="0">
+          <a href="{{notificationsUrl}}" class="section-link">See who liked your things &rarr;</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    {{#if followingPostsCount}}
+    <mj-section padding="8px 16px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="24px">
+        <mj-text css-class="section-label" padding-bottom="6px">From people you follow</mj-text>
+        <mj-text css-class="section-heading" padding-bottom="14px">
+          {{#if (eq followingPostsCount 1)}}1 new thing from people you follow{{else}}{{followingPostsCount}} new things from people you follow{{/if}}
+        </mj-text>
+        <mj-text padding="0">
+          <a href="{{followingUrl}}" class="section-link">See what they posted &rarr;</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    {{#if networkPostsCount}}
+    <mj-section padding="8px 16px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="24px">
+        <mj-text css-class="section-label" padding-bottom="6px">New things posted</mj-text>
+        <mj-text css-class="section-heading" padding-bottom="14px">
+          {{#if (eq networkPostsCount 1)}}1 new thing on Things I Like this week{{else}}{{networkPostsCount}} new things on Things I Like this week{{/if}}
+        </mj-text>
+        <mj-text padding="0">
+          <a href="{{everythingUrl}}" class="section-link">See things people like &rarr;</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    {{#if newMembersCount}}
+    <mj-section padding="8px 16px">
+      <mj-column background-color="#ffffff" border-radius="6px" border="1px solid #e4e4e7" padding="24px">
+        <mj-text css-class="section-label" padding-bottom="6px">New people</mj-text>
+        <mj-text css-class="section-heading" padding-bottom="20px">People who posted their first thing</mj-text>
+
+        {{#if firstposter_1_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_1_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_1_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_1_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_1_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_2_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_2_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_2_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_2_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_2_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_3_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_3_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_3_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_3_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_3_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_4_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_4_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_4_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_4_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_4_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_5_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_5_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_5_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_5_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_5_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_6_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_6_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_6_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_6_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_6_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_7_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_7_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_7_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_7_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_7_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_8_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_8_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_8_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_8_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_8_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_9_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_9_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_9_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_9_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_9_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_10_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_10_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_10_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_10_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_10_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_11_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_11_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_11_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_11_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_11_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_12_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_12_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_12_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_12_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_12_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_13_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_13_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_13_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_13_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_13_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_14_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_14_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_14_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_14_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_14_username}}</a></td></tr></mj-table>{{/if}}
+        {{#if firstposter_15_username}}<mj-table cellpadding="0" cellspacing="0" width="100%" role="presentation" padding="0 0 16px 0"><tr><td style="width:56px;vertical-align:middle;padding:0;"><a href="{{firstposter_15_profile_url}}" style="text-decoration:none;"><img src="{{firstposter_15_avatar_url}}" width="48" height="48" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:48px;height:48px;" /></a></td><td style="vertical-align:middle;padding:0 0 0 14px;text-align:left;"><a href="{{firstposter_15_profile_url}}" style="color:#18181b;text-decoration:none;font-size:15px;font-weight:400;">@{{firstposter_15_username}}</a></td></tr></mj-table>{{/if}}
+
+        {{#if first_posters_overflow}}
+        <mj-text padding="4px 0 0 0" font-size="13px" color="#71717a">and {{first_posters_overflow}} more</mj-text>
+        {{/if}}
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    <mj-section padding="16px 16px 8px">
+      <mj-column padding="32px 24px" background-color="#f4f4f5" border-radius="6px">
+        <mj-text align="center" font-size="17px" font-weight="600" padding-bottom="14px">Like things? Share them.</mj-text>
+        <mj-button href="https://thingsilike.app/" align="center">Things I Like</mj-button>
+      </mj-column>
+    </mj-section>
+
+    <mj-section padding="32px 24px 48px">
+      <mj-column>
+        <mj-text align="center" font-size="12px" color="#a1a1aa" line-height="1.6">
+          You&#x2019;re getting this weekly because you have notifications on for Things I Like.<br />
+          <a href="{unsubscribe_link}" style="color:#71717a;">Unsubscribe</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+  </mj-body>
+</mjml>

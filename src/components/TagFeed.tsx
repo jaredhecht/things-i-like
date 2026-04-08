@@ -9,6 +9,7 @@ import type { Post } from '@/src/lib/post-helpers'
 import { fetchEngagementForPostIds } from '@/src/lib/engagement-client'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
 import { supabase } from '@/src/lib/supabase'
+import { authorMetaForRethingFromUsername } from '@/src/lib/merge-rething-author-profiles'
 
 type AuthorMeta = {
   username: string
@@ -40,6 +41,19 @@ export function TagFeed({
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
   const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
+  const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(() => new Set())
+  const [followingLoaded, setFollowingLoaded] = useState(false)
+
+  const refetchFollowingIds = useCallback(async () => {
+    const uid = user?.id
+    if (!uid) return
+    const { data, error } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
+    if (error) return
+    setFollowingUserIds(
+      new Set((data || []).map((r) => r.following_id as string).filter((id): id is string => Boolean(id))),
+    )
+    setFollowingLoaded(true)
+  }, [user?.id])
 
   const hydrateEngagement = useCallback(async (userId: string, list: Post[]) => {
     if (list.length === 0) {
@@ -90,10 +104,13 @@ export function TagFeed({
       setLikedPostIds(new Set())
       setBookmarkedPostIds(new Set())
       setRethingCounts({})
+      setFollowingUserIds(new Set())
+      setFollowingLoaded(false)
       return
     }
     void hydrateEngagement(user.id, posts)
-  }, [user?.id, posts, hydrateEngagement])
+    void refetchFollowingIds()
+  }, [user?.id, posts, hydrateEngagement, refetchFollowingIds])
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -186,6 +203,15 @@ export function TagFeed({
           ) : null}
           {posts.map((post) => {
             const author = post.user_id ? authorByUserId[post.user_id] : undefined
+            const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)
+            const canInlineFollowAuthor = Boolean(
+              user?.id &&
+                post.user_id &&
+                post.user_id !== user.id &&
+                author?.username &&
+                followingLoaded &&
+                !followingUserIds.has(post.user_id),
+            )
             return (
               <PostCard
                 key={post.id}
@@ -193,6 +219,13 @@ export function TagFeed({
                 isOwner={user?.id === post.user_id}
                 authorUsername={author?.username ?? null}
                 authorAvatarUrl={author?.avatar_url ?? null}
+                rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
+                authorFollow={
+                  canInlineFollowAuthor && post.user_id && author?.username
+                    ? { userId: post.user_id, username: author.username }
+                    : null
+                }
+                onAuthorFollowChange={() => void refetchFollowingIds()}
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
                 likeCount={likeCounts[post.id] ?? 0}

@@ -9,6 +9,10 @@ import { supabase } from '@/src/lib/supabase'
 import type { Post } from '@/src/lib/post-helpers'
 import { fetchEngagementForPostIds } from '@/src/lib/engagement-client'
 import { fetchRethingCountsForPostIds } from '@/src/lib/rething-counts'
+import {
+  authorMetaForRethingFromUsername,
+  mergeProfilesForRethingUsernames,
+} from '@/src/lib/merge-rething-author-profiles'
 
 type AuthorMeta = {
   username: string
@@ -90,6 +94,7 @@ export default function BookmarksPage() {
         }
       }
     }
+    await mergeProfilesForRethingUsernames(supabase, list, map)
     setPosts(list)
     setAuthorByUserId(map)
 
@@ -200,6 +205,7 @@ export default function BookmarksPage() {
           <section className="space-y-6">
             {posts.map((post) => {
               const author = post.user_id ? authorByUserId[post.user_id] : undefined
+              const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)
               return (
                 <PostCard
                   key={post.id}
@@ -207,6 +213,7 @@ export default function BookmarksPage() {
                   isOwner={user.id === post.user_id}
                   authorUsername={author?.username ?? null}
                   authorAvatarUrl={author?.avatar_url ?? null}
+                  rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
                   showAuthor={!!author?.username}
                   dashboardActions
                   bookmarksFeed

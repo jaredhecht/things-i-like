@@ -26,6 +26,7 @@ import {
   parseRethingOriginalFromMetadata,
 } from '@/src/lib/rething-chain'
 import { getPlaceFromPost, placeMapsUrl } from '@/src/lib/place-metadata'
+import { FollowButton } from '@/src/components/FollowButton'
 import { PostShareControl, SharePostButton } from '@/src/components/SharePostButton'
 import { ComposerTypeIcon } from '@/src/components/ComposerTypeIcons'
 
@@ -116,11 +117,59 @@ function RethingIcon({ className }: { className?: string }) {
   )
 }
 
+const AVATAR_TOP = 'h-10 w-10 shrink-0 rounded-full border border-zinc-200 object-cover'
+
+function RebloggerAvatar({ src, username }: { src: string | null | undefined; username: string }) {
+  const letter = username.slice(0, 1).toUpperCase()
+  return (
+    <div className="relative h-10 w-10 shrink-0">
+      {src ? (
+        <img src={src} alt="" referrerPolicy="no-referrer" className={AVATAR_TOP} />
+      ) : (
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-sm font-semibold text-zinc-500"
+          aria-hidden
+        >
+          {letter}
+        </div>
+      )}
+      <span
+        className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white ring-2 ring-white"
+        aria-hidden
+      >
+        <span className="flex h-[15px] w-[15px] items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+          <RethingIcon className="h-2.5 w-2.5" />
+        </span>
+      </span>
+    </div>
+  )
+}
+
+function CommentRowAvatar({ src, username }: { src: string | null | undefined; username: string }) {
+  const letter = username.slice(0, 1).toUpperCase()
+  return src ? (
+    <img
+      src={src}
+      alt=""
+      referrerPolicy="no-referrer"
+      className="h-9 w-9 shrink-0 rounded-full border border-zinc-200 object-cover"
+    />
+  ) : (
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-xs font-semibold text-zinc-500"
+      aria-hidden
+    >
+      {letter}
+    </div>
+  )
+}
+
 export function PostCard({
   post,
   isOwner,
   authorUsername,
   authorAvatarUrl,
+  rethingFromAvatarUrl,
   showAuthor,
   dashboardActions,
   /** Saved-posts list: show bookmark (and likes/rethings when not your post). */
@@ -142,11 +191,14 @@ export function PostCard({
   shareUrl: shareUrlProp,
   /** Author handle; builds share URL on the client when `shareUrl` is omitted. */
   shareAuthorUsername,
+  authorFollow,
+  onAuthorFollowChange,
 }: {
   post: Post
   isOwner?: boolean
   authorUsername?: string | null
   authorAvatarUrl?: string | null
+  rethingFromAvatarUrl?: string | null
   showAuthor?: boolean
   dashboardActions?: boolean
   bookmarksFeed?: boolean
@@ -167,6 +219,8 @@ export function PostCard({
   onModulesClick?: () => void
   shareUrl?: string | null
   shareAuthorUsername?: string | null
+  authorFollow?: { userId: string; username: string } | null
+  onAuthorFollowChange?: () => void
 }) {
   const router = useRouter()
   const shareEl = shareUrlProp?.trim()
@@ -277,48 +331,56 @@ export function PostCard({
   const showOwnerLikeRething = Boolean(isOwner && !bookmarksFeed && (dashboardActions || profileLikeBar))
   const showFooterDivider = showEngagement || showProfileActions || hasTags || showOwnerLikeRething || showShare
   const originalHandle = post.rething_from_username?.trim()
+  const isRething = Boolean(originalHandle)
   /** Own posts on the signed-in dashboard: avatar only (room for ⋮). Else show @handle. */
   const showAuthorHandle = Boolean(
     authorUsername && !(isOwner && dashboardActions),
   )
 
-  const avatarImg = authorAvatarUrl ? (
-    <img
-      src={authorAvatarUrl}
-      alt=""
-      referrerPolicy="no-referrer"
-      className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 object-cover"
-    />
-  ) : (
-    <div className="h-8 w-8 shrink-0 rounded-full border border-zinc-200 bg-zinc-100" aria-hidden />
-  )
-
   return (
     <article id={`post-${post.id}`} className="scroll-mt-24 rounded-md border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="relative mb-3 flex items-start justify-between gap-3">
+      <div className="relative mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 pr-2">
-          {originalHandle ? (
-            <p className="mb-1 text-xs text-zinc-500">
-              Rething from{' '}
-              <Link href={`/${originalHandle}`} className="font-medium text-zinc-700 hover:underline">
-                @{originalHandle}
-              </Link>
-            </p>
-          ) : null}
-          <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{post.type}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {showAuthor && authorUsername ? (
+          {isRething && authorUsername ? (
             <Link
               href={`/${authorUsername}`}
-              className="flex max-w-[min(100%,12rem)] items-center gap-2 rounded-md py-0.5 pl-0.5 pr-1 hover:bg-zinc-50"
+              className="group flex max-w-full items-center gap-3 rounded-md py-0.5 pr-2 outline-none hover:bg-zinc-50/80"
+              aria-label={`@${authorUsername} — Rething`}
+            >
+              <RebloggerAvatar src={authorAvatarUrl} username={authorUsername} />
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-zinc-900 group-hover:underline">@{authorUsername}</p>
+                <p className="text-xs text-zinc-500">Rething</p>
+              </div>
+            </Link>
+          ) : !isRething && showAuthor && authorUsername ? (
+            <Link
+              href={`/${authorUsername}`}
+              className="flex max-w-full items-center gap-3 rounded-md py-0.5 pr-2 hover:bg-zinc-50"
               aria-label={showAuthorHandle ? `@${authorUsername}` : `Your profile @${authorUsername}`}
             >
-              {avatarImg}
-              {showAuthorHandle ? (
-                <span className="truncate text-sm font-medium text-zinc-800">@{authorUsername}</span>
-              ) : null}
+              {authorAvatarUrl ? (
+                <img src={authorAvatarUrl} alt="" referrerPolicy="no-referrer" className={AVATAR_TOP} />
+              ) : (
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-sm font-semibold text-zinc-500"
+                  aria-hidden
+                >
+                  {authorUsername.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              {showAuthorHandle ? <span className="truncate font-semibold text-zinc-900">@{authorUsername}</span> : null}
             </Link>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {authorFollow ? (
+            <FollowButton
+              followingId={authorFollow.userId}
+              profileUsername={authorFollow.username}
+              oauthReturnTo="/"
+              onFollowChange={onAuthorFollowChange}
+            />
           ) : null}
           {isOwner && (onEditClick || onDeleteClick || onModulesClick) ? (
             <div className="relative shrink-0" data-post-menu-root>
@@ -381,193 +443,199 @@ export function PostCard({
         </div>
       </div>
 
-      {post.type === 'youtube' && post.content ? (
-        getYouTubeVideoId(post.content) ? (
-          <div className="relative mb-4 w-full overflow-hidden rounded-md bg-black" style={{ paddingBottom: '56.25%' }}>
-            <iframe
-              src={`https://www.youtube.com/embed/${getYouTubeVideoId(post.content)}`}
-              className="absolute left-0 top-0 h-full w-full"
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
-            {post.content}
-          </a>
+      {(() => {
+        const core = (
+          <>
+                  {post.type === 'youtube' && post.content ? (
+                    getYouTubeVideoId(post.content) ? (
+                      <div className="relative mb-4 w-full overflow-hidden rounded-md bg-black" style={{ paddingBottom: '56.25%' }}>
+                        <iframe
+                          src={`https://www.youtube.com/embed/${getYouTubeVideoId(post.content)}`}
+                          className="absolute left-0 top-0 h-full w-full"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : (
+                      <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
+                        {post.content}
+                      </a>
+                    )
+                  ) : null}
+
+                  {post.type === 'spotify' && post.content ? (
+                    getSpotifyEmbedUrl(post.content) ? (
+                      <iframe
+                        src={getSpotifyEmbedUrl(post.content) || ''}
+                        width="100%"
+                        height="152"
+                        frameBorder="0"
+                        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                        loading="lazy"
+                        className="mb-4 rounded-md"
+                      />
+                    ) : (
+                      <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
+                        {post.content}
+                      </a>
+                    )
+                  ) : null}
+
+                  {post.type === 'soundcloud' && post.content ? (
+                    soundCloudPostSrc ? (
+                      <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+                        <iframe
+                          key={scPermalink}
+                          title="SoundCloud"
+                          src={soundCloudPostSrc}
+                          width="100%"
+                          height={300}
+                          className="block w-full border-0"
+                          allow="autoplay"
+                          loading="lazy"
+                        />
+                      </div>
+                    ) : (
+                      <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
+                        {post.content}
+                      </a>
+                    )
+                  ) : null}
+
+                  {post.type === 'image' && post.content ? (
+                    <a
+                      href={post.content}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-white p-1"
+                    >
+                      <img
+                        src={post.content}
+                        alt="Post image"
+                        className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
+                      />
+                    </a>
+                  ) : null}
+
+                  {post.type === 'place' ? (() => {
+                    const place = getPlaceFromPost(post)
+                    if (!place) return null
+                    const mapsHref = placeMapsUrl(place)
+                    const sub = place.city?.trim() || place.formatted_address?.trim() || null
+                    const hasHero = Boolean(post.content && isValidHttpUrl(post.content))
+                    const pin = (
+                      <a
+                        href={mapsHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open in Google Maps"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-zinc-800 shadow-sm ring-1 ring-zinc-200/80 transition hover:bg-white hover:ring-zinc-300"
+                      >
+                        <ComposerTypeIcon type="place" />
+                      </a>
+                    )
+                    return (
+                      <div className="mb-4">
+                        {hasHero && post.content ? (
+                          <div className="relative overflow-hidden rounded-md border border-zinc-100 bg-white p-1">
+                            <a
+                              href={post.content}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex min-h-[100px] items-center justify-center"
+                            >
+                              <img
+                                src={post.content}
+                                alt=""
+                                className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
+                              />
+                            </a>
+                            <div className="absolute bottom-2 right-2 pointer-events-auto">{pin}</div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-3 rounded-md border border-zinc-100 bg-zinc-50/90 px-4 py-4">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-lg font-semibold leading-snug tracking-tight text-zinc-900">{place.name}</p>
+                              {sub ? <p className="mt-1 text-sm leading-relaxed text-zinc-500">{sub}</p> : null}
+                            </div>
+                            {pin}
+                          </div>
+                        )}
+                        {hasHero ? (
+                          <div className="mt-3">
+                            <p className="text-base font-semibold leading-snug text-zinc-900">{place.name}</p>
+                            {sub ? <p className="mt-0.5 text-sm text-zinc-500">{sub}</p> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })() : null}
+
+                  {post.type === 'article' && post.content ? (
+                    renderPrettyLinkCard ? (
+                      <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block overflow-hidden rounded-md border border-zinc-200 hover:bg-zinc-50">
+                        {liveLinkPreview?.image ? <img src={liveLinkPreview.image} alt={liveLinkPreview.title} className="h-48 w-full object-cover" /> : null}
+                        <div className="p-4">
+                          <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{liveLinkPreview?.siteName || getHostnameLabel(post.content)}</p>
+                          <p className="mb-1 text-sm font-semibold text-zinc-900">{liveLinkPreview?.title}</p>
+                          {liveLinkPreview?.description ? <p className="line-clamp-2 text-sm text-zinc-500">{liveLinkPreview.description}</p> : null}
+                        </div>
+                      </a>
+                    ) : (
+                      <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block rounded-md border border-zinc-200 p-4 hover:bg-zinc-50">
+                        <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{getHostnameLabel(post.content)}</p>
+                        <p className="break-all text-sm font-medium text-zinc-800">{post.content}</p>
+                      </a>
+                    )
+                  ) : null}
+
+                  {post.type === 'quote' && (
+                    <>
+                      <blockquote className="mb-2 text-xl font-light italic leading-relaxed text-zinc-900">
+                        &ldquo;
+                        <PlainWithMentions text={post.content || ''} />
+                        &rdquo;
+                      </blockquote>
+                      {quoteAuthor ? <p className="mb-3 text-sm italic text-zinc-500">- {quoteAuthor}</p> : null}
+                    </>
+                  )}
+
+                  {post.type === 'text' && post.content ? (
+                    <>
+                      <div
+                        role="presentation"
+                        onClick={handleRichTextLinkClick}
+                        className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline"
+                        dangerouslySetInnerHTML={{ __html: htmlBody }}
+                      />
+                      {soundCloudWidgetSrc ? (
+                        <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
+                          <iframe
+                            key={scPermalink}
+                            title="SoundCloud"
+                            src={soundCloudWidgetSrc}
+                            width="100%"
+                            height={300}
+                            className="block w-full border-0"
+                            allow="autoplay"
+                            loading="lazy"
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text', 'place'].includes(post.type) && post.content ? (
+                    <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
+                      {post.content}
+                    </a>
+                  ) : null}
+
+
+          </>
         )
-      ) : null}
-
-      {post.type === 'spotify' && post.content ? (
-        getSpotifyEmbedUrl(post.content) ? (
-          <iframe
-            src={getSpotifyEmbedUrl(post.content) || ''}
-            width="100%"
-            height="152"
-            frameBorder="0"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-            className="mb-4 rounded-md"
-          />
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
-            {post.content}
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'soundcloud' && post.content ? (
-        soundCloudPostSrc ? (
-          <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
-            <iframe
-              key={scPermalink}
-              title="SoundCloud"
-              src={soundCloudPostSrc}
-              width="100%"
-              height={300}
-              className="block w-full border-0"
-              allow="autoplay"
-              loading="lazy"
-            />
-          </div>
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-3 block break-all text-blue-600 hover:underline">
-            {post.content}
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'image' && post.content ? (
-        <a
-          href={post.content}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mb-4 flex min-h-[100px] items-center justify-center overflow-hidden rounded-md bg-white p-1"
-        >
-          <img
-            src={post.content}
-            alt="Post image"
-            className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
-          />
-        </a>
-      ) : null}
-
-      {post.type === 'place' ? (() => {
-        const place = getPlaceFromPost(post)
-        if (!place) return null
-        const mapsHref = placeMapsUrl(place)
-        const sub = place.city?.trim() || place.formatted_address?.trim() || null
-        const hasHero = Boolean(post.content && isValidHttpUrl(post.content))
-        const pin = (
-          <a
-            href={mapsHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open in Google Maps"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/95 text-zinc-800 shadow-sm ring-1 ring-zinc-200/80 transition hover:bg-white hover:ring-zinc-300"
-          >
-            <ComposerTypeIcon type="place" />
-          </a>
-        )
-        return (
-          <div className="mb-4">
-            {hasHero && post.content ? (
-              <div className="relative overflow-hidden rounded-md border border-zinc-100 bg-white p-1">
-                <a
-                  href={post.content}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-h-[100px] items-center justify-center"
-                >
-                  <img
-                    src={post.content}
-                    alt=""
-                    className="mx-auto block h-auto w-auto max-h-[min(60vh,520px)] max-w-full object-contain"
-                  />
-                </a>
-                <div className="absolute bottom-2 right-2 pointer-events-auto">{pin}</div>
-              </div>
-            ) : (
-              <div className="flex items-start justify-between gap-3 rounded-md border border-zinc-100 bg-zinc-50/90 px-4 py-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-semibold leading-snug tracking-tight text-zinc-900">{place.name}</p>
-                  {sub ? <p className="mt-1 text-sm leading-relaxed text-zinc-500">{sub}</p> : null}
-                </div>
-                {pin}
-              </div>
-            )}
-            {hasHero ? (
-              <div className="mt-3">
-                <p className="text-base font-semibold leading-snug text-zinc-900">{place.name}</p>
-                {sub ? <p className="mt-0.5 text-sm text-zinc-500">{sub}</p> : null}
-              </div>
-            ) : null}
-          </div>
-        )
-      })() : null}
-
-      {post.type === 'article' && post.content ? (
-        renderPrettyLinkCard ? (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block overflow-hidden rounded-md border border-zinc-200 hover:bg-zinc-50">
-            {liveLinkPreview?.image ? <img src={liveLinkPreview.image} alt={liveLinkPreview.title} className="h-48 w-full object-cover" /> : null}
-            <div className="p-4">
-              <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{liveLinkPreview?.siteName || getHostnameLabel(post.content)}</p>
-              <p className="mb-1 text-sm font-semibold text-zinc-900">{liveLinkPreview?.title}</p>
-              {liveLinkPreview?.description ? <p className="line-clamp-2 text-sm text-zinc-500">{liveLinkPreview.description}</p> : null}
-            </div>
-          </a>
-        ) : (
-          <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-4 block rounded-md border border-zinc-200 p-4 hover:bg-zinc-50">
-            <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-zinc-400">{getHostnameLabel(post.content)}</p>
-            <p className="break-all text-sm font-medium text-zinc-800">{post.content}</p>
-          </a>
-        )
-      ) : null}
-
-      {post.type === 'quote' && (
-        <>
-          <blockquote className="mb-2 text-xl font-light italic leading-relaxed text-zinc-900">
-            &ldquo;
-            <PlainWithMentions text={post.content || ''} />
-            &rdquo;
-          </blockquote>
-          {quoteAuthor ? <p className="mb-3 text-sm italic text-zinc-500">- {quoteAuthor}</p> : null}
-        </>
-      )}
-
-      {post.type === 'text' && post.content ? (
-        <>
-          <div
-            role="presentation"
-            onClick={handleRichTextLinkClick}
-            className="mb-2 leading-relaxed text-zinc-800 [&_a]:text-blue-600 [&_a]:underline"
-            dangerouslySetInnerHTML={{ __html: htmlBody }}
-          />
-          {soundCloudWidgetSrc ? (
-            <div className="mb-4 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50">
-              <iframe
-                key={scPermalink}
-                title="SoundCloud"
-                src={soundCloudWidgetSrc}
-                width="100%"
-                height={300}
-                className="block w-full border-0"
-                allow="autoplay"
-                loading="lazy"
-              />
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {!['youtube', 'spotify', 'soundcloud', 'image', 'article', 'quote', 'text', 'place'].includes(post.type) && post.content ? (
-        <a href={post.content} target="_blank" rel="noopener noreferrer" className="mb-2 block break-all text-blue-600 hover:underline">
-          {post.content}
-        </a>
-      ) : null}
-
-      {preservedRethingContent ? (
-        <div className="mb-3 rounded-md border border-zinc-100 bg-zinc-50/90 p-3">
+        const preservedEl = preservedRethingContent ? (
+        <div className="mb-0 rounded-md border border-zinc-100 bg-white/80 p-3">
           {rethingLayers.map((layer, i) => (
             <div key={i} className={i > 0 ? 'mt-3 border-t border-zinc-200/80 pt-3' : ''}>
               {layer.caption && stripHtml(layer.caption).length > 0 ? (
@@ -596,19 +664,53 @@ export function PostCard({
             </div>
           ))}
         </div>
-      ) : null}
+      ) : null
 
+        if (isRething && originalHandle) {
+          return (
+            <div className="mb-4 overflow-hidden rounded-xl border border-zinc-200/90 bg-zinc-50/40">
+              <div className="border-b border-zinc-200/80 bg-white/90 px-3.5 py-3 sm:px-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <CommentRowAvatar src={rethingFromAvatarUrl} username={originalHandle} />
+                  <div className="flex min-h-9 min-w-0 flex-1 items-center">
+                    <Link href={`/${originalHandle}`} className="leading-none font-semibold text-zinc-900 hover:underline">
+                      @{originalHandle}
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              <div className="px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
+                {core}
+                {preservedEl}
+              </div>
+            </div>
+          )
+        }
+        return <>{core}</>
+      })()}
       {post.caption ? (
-        <div
-          role="presentation"
-          onClick={handleRichTextLinkClick}
-          className={`mb-2 text-sm [&_a]:text-blue-600 [&_a]:underline ${
-            preservedRethingContent
-              ? 'border-t border-zinc-100 pt-3 text-zinc-800'
-              : 'text-zinc-500'
-          }`}
-          dangerouslySetInnerHTML={{ __html: htmlCaption }}
-        />
+        isRething && authorUsername ? (
+          <div
+            role="presentation"
+            onClick={handleRichTextLinkClick}
+            className="mb-2 flex gap-3 text-sm [&_a]:text-blue-600 [&_a]:underline"
+          >
+            <CommentRowAvatar src={authorAvatarUrl} username={authorUsername} />
+            <div className="min-w-0 flex-1">
+              <Link href={`/${authorUsername}`} className="mb-1 block text-sm font-semibold text-zinc-900 hover:underline">
+                @{authorUsername}
+              </Link>
+              <div className="leading-relaxed text-zinc-800" dangerouslySetInnerHTML={{ __html: htmlCaption }} />
+            </div>
+          </div>
+        ) : (
+          <div
+            role="presentation"
+            onClick={handleRichTextLinkClick}
+            className="mb-2 text-sm text-zinc-500 [&_a]:text-blue-600 [&_a]:underline"
+            dangerouslySetInnerHTML={{ __html: htmlCaption }}
+          />
+        )
       ) : null}
 
       {hasTags ? (

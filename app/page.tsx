@@ -1566,147 +1566,148 @@ export default function Home() {
 
         {user && profile ? (
           <>
-          <section className="mb-10 overflow-hidden rounded-[4px] border border-[#dbdbdb] bg-white">
-            <div className="flex items-center gap-3 px-3.5 py-3">
-              {avatarUrl ? <img src={avatarUrl} alt="Your avatar" className="h-[34px] w-[34px] rounded-full border border-[#dbdbdb] object-cover" /> : <div className="h-[34px] w-[34px] rounded-full border border-[#dbdbdb] bg-zinc-100" />}
-              <div className="text-sm text-[#8e8e8e]">{panel ? 'Choose a post type below' : 'Something you like today?'}</div>
-            </div>
-
-            <div className="border-t border-[#dbdbdb] px-3.5 py-2.5">
-              <div className="flex flex-wrap gap-1.5">
-                {(['image', 'video', 'link', 'place', 'text', 'quote', 'audio'] as ComposerType[]).map((type) => (
+          <div className="mb-10">
+            <p className="mb-4 text-center text-sm font-semibold text-[#8e8e8e]">
+              Share something you like
+            </p>
+            <section className="overflow-hidden rounded-[4px] border border-[#dbdbdb] bg-white">
+              <div className="px-5 py-5 sm:px-5 sm:py-5">
+                <div className="flex flex-wrap justify-center gap-2 sm:flex-nowrap">
+                  {(['image', 'video', 'audio', 'text', 'quote', 'link', 'place'] as ComposerType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
                     onClick={() => setPanel(panel === type ? null : type)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium capitalize transition ${
-                      activeTypeButton(type) ? 'border-zinc-900 bg-zinc-900 text-white' : 'border-[#dbdbdb] text-[#8e8e8e] hover:border-zinc-900 hover:text-zinc-900'
+                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-normal capitalize transition sm:px-3.5 sm:py-2 [&_svg]:h-4 [&_svg]:w-4 ${
+                      activeTypeButton(type)
+                        ? 'border-zinc-900 bg-zinc-900 text-white'
+                        : 'border-[#dbdbdb] bg-white text-[#8e8e8e] hover:border-zinc-900 hover:text-zinc-900'
                     }`}
                   >
                     <ComposerTypeIcon type={type} />
                     <span>{type}</span>
                   </button>
                 ))}
+                </div>
               </div>
-            </div>
 
-            {panel ? (
-              <div className="border-t border-[#dbdbdb]">
-                <div className="p-3.5">
-                  {panel === 'image' ? (
-                    <div className="space-y-3">
-                      <input
-                        ref={imageFileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0]
-                          if (f) void uploadImageFile(f)
-                          e.target.value = ''
-                        }}
-                      />
-                      {!imageUrl && !imageLocalPreview ? (
-                        <div
-                          className={`flex overflow-hidden rounded-[4px] border-[1.5px] border-dashed border-[#dbdbdb] transition-colors ${
-                            imageDropActive ? 'bg-zinc-50' : ''
-                          }`}
-                          onDragOver={(e) => {
-                            e.preventDefault()
-                            setImageDropActive(true)
-                          }}
-                          onDragLeave={(e) => {
-                            if (!e.currentTarget.contains(e.relatedTarget as Node)) setImageDropActive(false)
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            setImageDropActive(false)
-                            const f = e.dataTransfer.files?.[0]
-                            if (f?.type.startsWith('image/')) void uploadImageFile(f)
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => imageFileInputRef.current?.click()}
-                            className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center transition-colors hover:bg-zinc-50"
-                          >
-                            <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <polyline points="16 16 12 12 8 16" />
-                              <line x1="12" y1="12" x2="12" y2="21" />
-                              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-                            </svg>
-                            <span className="text-sm font-semibold text-zinc-900">
-                              Drop or <span className="text-[#0095f6]">browse</span>
-                            </span>
-                            <span className="text-xs text-[#8e8e8e]">JPG, PNG, GIF, WebP</span>
-                          </button>
-                          <div className="w-px shrink-0 bg-[#dbdbdb]" />
-                          <span className="flex shrink-0 items-center px-2 text-[11px] text-[#b8b8b8]">or</span>
-                          <div className="w-px shrink-0 bg-[#dbdbdb]" />
-                          <button
-                            type="button"
-                            tabIndex={0}
-                            onClick={(e) => (e.target as HTMLElement).focus()}
-                            className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center outline-none transition-colors focus:bg-[#f0f6ff] focus:ring-2 focus:ring-inset focus:ring-blue-200"
-                          >
-                            <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8] focus-within:text-[#0095f6]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
-                              <rect x="9" y="2" width="6" height="4" rx="1" />
-                              <path d="M9 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-3" />
-                              <line x1="12" y1="11" x2="12" y2="17" />
-                              <line x1="9" y1="14" x2="15" y2="14" />
-                            </svg>
-                            <span className="text-sm font-semibold text-zinc-900">Click, then paste</span>
-                            <span className="text-xs text-[#8e8e8e]">Cmd+V / Ctrl+V</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="relative overflow-hidden rounded-[4px] border border-[#dbdbdb]">
-                          <img
-                            src={imageLocalPreview || imageUrl}
-                            alt="Selected"
-                            className="mx-auto max-h-[min(50vh,400px)] w-full object-contain bg-white"
-                          />
-                          {imageUploading ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm font-medium text-zinc-600">Uploading…</div>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => clearImageComposerState()}
-                            disabled={imageUploading}
-                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/70 disabled:opacity-50"
-                            aria-label="Remove image"
-                          >
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                      <div>
-                        <p className="mb-1 text-xs text-[#8e8e8e]">Or paste an image URL</p>
+              {panel ? (
+                <div className="border-t border-[#dbdbdb]">
+                  <div className="p-3.5">
+                    {panel === 'image' ? (
+                      <div className="space-y-3">
                         <input
-                          type="url"
-                          value={imageUrl}
+                          ref={imageFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif"
+                          className="hidden"
                           onChange={(e) => {
-                            const raw = e.target.value
-                            if (!raw.trim()) {
-                              clearImageComposerState()
-                              return
-                            }
-                            setImageUrl(raw)
-                            setImageLocalPreview((prev) => {
-                              if (prev) URL.revokeObjectURL(prev)
-                              return null
-                            })
+                            const f = e.target.files?.[0]
+                            if (f) void uploadImageFile(f)
+                            e.target.value = ''
                           }}
-                          placeholder="https://…"
-                          disabled={imageUploading}
-                          className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
                         />
+                        {!imageUrl && !imageLocalPreview ? (
+                          <div
+                            className={`flex overflow-hidden rounded-[4px] border-[1.5px] border-dashed border-[#dbdbdb] transition-colors ${
+                              imageDropActive ? 'bg-zinc-50' : ''
+                            }`}
+                            onDragOver={(e) => {
+                              e.preventDefault()
+                              setImageDropActive(true)
+                            }}
+                            onDragLeave={(e) => {
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) setImageDropActive(false)
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault()
+                              setImageDropActive(false)
+                              const f = e.dataTransfer.files?.[0]
+                              if (f?.type.startsWith('image/')) void uploadImageFile(f)
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => imageFileInputRef.current?.click()}
+                              className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center transition-colors hover:bg-zinc-50"
+                            >
+                              <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <polyline points="16 16 12 12 8 16" />
+                                <line x1="12" y1="12" x2="12" y2="21" />
+                                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+                              </svg>
+                              <span className="text-sm font-semibold text-zinc-900">
+                                Drop or <span className="text-[#0095f6]">browse</span>
+                              </span>
+                              <span className="text-xs text-[#8e8e8e]">JPG, PNG, GIF, WebP</span>
+                            </button>
+                            <div className="w-px shrink-0 bg-[#dbdbdb]" />
+                            <span className="flex shrink-0 items-center px-2 text-[11px] text-[#b8b8b8]">or</span>
+                            <div className="w-px shrink-0 bg-[#dbdbdb]" />
+                            <button
+                              type="button"
+                              tabIndex={0}
+                              onClick={(e) => (e.target as HTMLElement).focus()}
+                              className="flex flex-1 flex-col items-center justify-center gap-1 px-3 py-7 text-center outline-none transition-colors focus:bg-[#f0f6ff] focus:ring-2 focus:ring-inset focus:ring-blue-200"
+                            >
+                              <svg className="mb-1 h-[26px] w-[26px] text-[#b8b8b8] focus-within:text-[#0095f6]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+                                <rect x="9" y="2" width="6" height="4" rx="1" />
+                                <path d="M9 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-3" />
+                                <line x1="12" y1="11" x2="12" y2="17" />
+                                <line x1="9" y1="14" x2="15" y2="14" />
+                              </svg>
+                              <span className="text-sm font-semibold text-zinc-900">Click, then paste</span>
+                              <span className="text-xs text-[#8e8e8e]">Cmd+V / Ctrl+V</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative overflow-hidden rounded-[4px] border border-[#dbdbdb]">
+                            <img
+                              src={imageLocalPreview || imageUrl}
+                              alt="Selected"
+                              className="mx-auto max-h-[min(50vh,400px)] w-full object-contain bg-white"
+                            />
+                            {imageUploading ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm font-medium text-zinc-600">Uploading…</div>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => clearImageComposerState()}
+                              disabled={imageUploading}
+                              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/70 disabled:opacity-50"
+                              aria-label="Remove image"
+                            >
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                        <div>
+                          <p className="mb-1 text-xs text-[#8e8e8e]">Or paste an image URL</p>
+                          <input
+                            type="url"
+                            value={imageUrl}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              if (!raw.trim()) {
+                                clearImageComposerState()
+                                return
+                              }
+                              setImageUrl(raw)
+                              setImageLocalPreview((prev) => {
+                                if (prev) URL.revokeObjectURL(prev)
+                                return null
+                              })
+                            }}
+                            placeholder="https://…"
+                            disabled={imageUploading}
+                            className="w-full rounded-[4px] border border-[#dbdbdb] px-3 py-2.5 text-sm text-zinc-900 placeholder:text-[#b8b8b8] focus:border-[#a0a0a0] focus:outline-none disabled:opacity-50"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null}
 
                   {panel === 'place' ? (
                     <div className="space-y-4">
@@ -2253,9 +2254,10 @@ export default function Home() {
                     {loading ? 'Posting...' : 'Post'}
                   </button>
                 </div>
-              </div>
-            ) : null}
-          </section>
+                </div>
+              ) : null}
+            </section>
+          </div>
           {user && profile && !needsUsername ? (
             <div ref={feedTabsRef} className="mb-8 flex justify-center" role="tablist" aria-label="Home feed">
               <div className="flex w-full max-w-sm rounded-[4px] border border-[#dbdbdb] bg-white p-0.5 sm:max-w-md">

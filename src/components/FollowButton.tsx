@@ -24,8 +24,7 @@ export function FollowButton({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
-  const refresh = useCallback(async () => {
-    const { data: { user: u } } = await supabase.auth.getUser()
+  const loadFollowState = useCallback(async (u: User | null) => {
     setUser(u)
     if (!u) {
       setFollowing(false)
@@ -48,12 +47,23 @@ export function FollowButton({
   }, [followingId])
 
   useEffect(() => {
-    void refresh()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      void refresh()
+    let cancelled = false
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return
+      void loadFollowState(session?.user ?? null)
     })
-    return () => subscription.unsubscribe()
-  }, [refresh])
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoading(true)
+      void loadFollowState(session?.user ?? null)
+    })
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
+  }, [loadFollowState])
 
   async function signInWithGoogle() {
     if (typeof window === 'undefined') return

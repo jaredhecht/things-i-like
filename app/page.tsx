@@ -9,6 +9,7 @@ import { InlinePostEditor } from '../src/components/InlinePostEditor'
 import { PostCard } from '../src/components/PostCard'
 import { RichTextEditor } from '../src/components/RichTextEditor'
 import { HomeLegalFooter } from '../src/components/HomeLegalFooter'
+import { HomeFeedSkeleton } from '../src/components/HomePageSkeleton'
 import { PeopleWhoLikeThingsDirectory } from '../src/components/PeopleWhoLikeThingsDirectory'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
@@ -88,7 +89,9 @@ type FeedFetchOptions = { offset?: number; append?: boolean }
 export default function Home() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [needsUsername, setNeedsUsername] = useState(false)
   const [username, setUsername] = useState('')
   const [posts, setPosts] = useState<Post[]>([])
@@ -155,8 +158,10 @@ export default function Home() {
   /** Others this user follows (for inline Follow on posts from non-followed authors in Following / EveryThing). */
   const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(() => new Set())
   const [feedBootstrapped, setFeedBootstrapped] = useState(false)
+  const [feedLoadingInitial, setFeedLoadingInitial] = useState(false)
   const [feedHasMore, setFeedHasMore] = useState(false)
   const [feedLoadingMore, setFeedLoadingMore] = useState(false)
+  const [publicPreviewLoading, setPublicPreviewLoading] = useState(false)
   const [directoryRefreshKey, setDirectoryRefreshKey] = useState(0)
   /** Following tab “pick people” panel: stays open until dismissed, even after the first follow. */
   const [pickPeopleVisible, setPickPeopleVisible] = useState(false)
@@ -226,22 +231,28 @@ export default function Home() {
   }
 
   async function loadProfile(userId: string) {
-    const [{ data }, { data: mods }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).single(),
-      supabase
-        .from('profile_modules')
-        .select('id, name, sort_order, is_active')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('sort_order'),
-    ])
-    if (data) {
-      setProfile(data)
-      setNeedsUsername(false)
-    } else {
-      setNeedsUsername(true)
+    setProfileLoading(true)
+    try {
+      const [{ data }, { data: mods }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase
+          .from('profile_modules')
+          .select('id, name, sort_order, is_active')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('sort_order'),
+      ])
+      if (data) {
+        setProfile(data)
+        setNeedsUsername(false)
+      } else {
+        setProfile(null)
+        setNeedsUsername(true)
+      }
+      setProfileModulesForComposer((mods || []) as ProfileModuleRow[])
+    } finally {
+      setProfileLoading(false)
     }
-    setProfileModulesForComposer((mods || []) as ProfileModuleRow[])
   }
 
   async function claimUsername(e: React.FormEvent) {
@@ -309,198 +320,218 @@ export default function Home() {
     setRethingCounts((prev) => ({ ...prev, ...rethingByPost }))
   }, [])
 
-  const loadPublicPreviewPosts = useCallback(async () => {
-    const picked: Post[] = []
-    const seenUser = new Set<string>()
-    let offset = 0
+  const mergeRethingAuthorsIntoState = useCallback(async (list: Post[], baseMap: Record<string, AuthorMeta>) => {
+    if (list.length === 0) return
+    const mergedMap = { ...baseMap }
+    await mergeProfilesForRethingUsernames(supabase, list, mergedMap)
+    setAuthorByUserId((prev) => ({ ...prev, ...mergedMap }))
+  }, [])
 
-    for (let page = 0; page < PUBLIC_PREVIEW_MAX_PAGES && picked.length < PUBLIC_PREVIEW_MAX_POSTS; page++) {
-      const { data: rows, error } = await supabase
-        .from('posts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + PUBLIC_PREVIEW_PAGE - 1)
-      if (error) {
-        console.error('Error loading public preview posts:', error)
+  const loadPublicPreviewPosts = useCallback(async () => {
+    setPublicPreviewLoading(true)
+    try {
+      const picked: Post[] = []
+      const seenUser = new Set<string>()
+      let offset = 0
+
+      for (let page = 0; page < PUBLIC_PREVIEW_MAX_PAGES && picked.length < PUBLIC_PREVIEW_MAX_POSTS; page++) {
+        const { data: rows, error } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PUBLIC_PREVIEW_PAGE - 1)
+        if (error) {
+          console.error('Error loading public preview posts:', error)
+          setPosts([])
+          setAuthorByUserId({})
+          return
+        }
+        const batch = (rows || []) as Post[]
+        if (batch.length === 0) break
+        for (const p of batch) {
+          const uid = p.user_id
+          if (!uid || seenUser.has(uid)) continue
+          seenUser.add(uid)
+          picked.push(p)
+          if (picked.length >= PUBLIC_PREVIEW_MAX_POSTS) break
+        }
+        if (batch.length < PUBLIC_PREVIEW_PAGE) break
+        offset += PUBLIC_PREVIEW_PAGE
+      }
+
+      const ids = [...seenUser]
+      if (ids.length === 0) {
         setPosts([])
         setAuthorByUserId({})
         return
       }
-      const batch = (rows || []) as Post[]
-      if (batch.length === 0) break
-      for (const p of batch) {
-        const uid = p.user_id
-        if (!uid || seenUser.has(uid)) continue
-        seenUser.add(uid)
-        picked.push(p)
-        if (picked.length >= PUBLIC_PREVIEW_MAX_POSTS) break
-      }
-      if (batch.length < PUBLIC_PREVIEW_PAGE) break
-      offset += PUBLIC_PREVIEW_PAGE
-    }
-
-    const ids = [...seenUser]
-    if (ids.length === 0) {
-      setPosts([])
-      setAuthorByUserId({})
-      return
-    }
-    const map: Record<string, AuthorMeta> = {}
-    for (let i = 0; i < ids.length; i += PROFILE_IN_CHUNK) {
-      const slice = ids.slice(i, i + PROFILE_IN_CHUNK)
-      const { data: profs, error: profErr } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .in('id', slice)
-      if (profErr) {
-        console.error('Error loading preview author profiles:', profErr)
-        continue
-      }
-      for (const p of profs || []) {
-        const raw = p.avatar_url
-        const avatarUrl = typeof raw === 'string' ? raw.trim() || null : raw ?? null
-        map[p.id] = {
-          username: p.username,
-          display_name: p.display_name,
-          avatar_url: avatarUrl,
+      const map: Record<string, AuthorMeta> = {}
+      for (let i = 0; i < ids.length; i += PROFILE_IN_CHUNK) {
+        const slice = ids.slice(i, i + PROFILE_IN_CHUNK)
+        const { data: profs, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .in('id', slice)
+        if (profErr) {
+          console.error('Error loading preview author profiles:', profErr)
+          continue
+        }
+        for (const p of profs || []) {
+          const raw = p.avatar_url
+          const avatarUrl = typeof raw === 'string' ? raw.trim() || null : raw ?? null
+          map[p.id] = {
+            username: p.username,
+            display_name: p.display_name,
+            avatar_url: avatarUrl,
+          }
         }
       }
+      await mergeProfilesForRethingUsernames(supabase, picked, map)
+      setPosts(picked)
+      setAuthorByUserId(map)
+    } finally {
+      setPublicPreviewLoading(false)
     }
-    await mergeProfilesForRethingUsernames(supabase, picked, map)
-    setPosts(picked)
-    setAuthorByUserId(map)
   }, [])
 
   const fetchFeedForUser = useCallback(
     async (userId: string, preloadedFollowingIds?: string[], options?: FeedFetchOptions) => {
       const offset = options?.offset ?? 0
       const append = options?.append ?? false
-      let followingIds: string[]
-      if (preloadedFollowingIds) {
-        followingIds = preloadedFollowingIds
-      } else {
-        const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
-        if (followErr) console.error('Error fetching follows:', followErr)
-        followingIds = [...new Set((follows || []).map((f) => f.following_id))]
-      }
-      const authorIds = [...new Set([userId, ...followingIds])]
-      const list = await fetchRecentPostsForAuthorIds(supabase, authorIds, FEED_PAGE_SIZE, offset).catch((error) => {
-        console.error('Error fetching feed:', error)
-        return [] as Post[]
-      })
-      const profileQueryIds = append
-        ? [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
-        : authorIds
-      const map: Record<string, AuthorMeta> = {}
-      if (profileQueryIds.length > 0) {
-        const { data: profs, error: profErr } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, avatar_url')
-          .in('id', profileQueryIds)
-        if (profErr) console.error('Error loading feed author profiles:', profErr)
-        for (const p of profs || []) {
-          map[p.id] = {
-            username: p.username,
-            display_name: p.display_name,
-            avatar_url: p.avatar_url ?? null,
-          }
+      if (!append) setFeedLoadingInitial(true)
+      try {
+        let followingIds: string[]
+        if (preloadedFollowingIds) {
+          followingIds = preloadedFollowingIds
+        } else {
+          const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
+          if (followErr) console.error('Error fetching follows:', followErr)
+          followingIds = [...new Set((follows || []).map((f) => f.following_id))]
         }
-      }
-      await mergeProfilesForRethingUsernames(supabase, list, map)
-      const hasMore = list.length === FEED_PAGE_SIZE
-      if (append) {
-        setPosts((prev) => {
-          const seen = new Set(prev.map((p) => p.id))
-          const out = [...prev]
-          for (const p of list) {
-            if (!seen.has(p.id)) {
-              seen.add(p.id)
-              out.push(p)
+        const authorIds = [...new Set([userId, ...followingIds])]
+        const list = await fetchRecentPostsForAuthorIds(supabase, authorIds, FEED_PAGE_SIZE, offset).catch((error) => {
+          console.error('Error fetching feed:', error)
+          return [] as Post[]
+        })
+        const profileQueryIds = [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
+        const map: Record<string, AuthorMeta> = {}
+        if (profileQueryIds.length > 0) {
+          const { data: profs, error: profErr } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url')
+            .in('id', profileQueryIds)
+          if (profErr) console.error('Error loading feed author profiles:', profErr)
+          for (const p of profs || []) {
+            map[p.id] = {
+              username: p.username,
+              display_name: p.display_name,
+              avatar_url: p.avatar_url ?? null,
             }
           }
-          return out
-        })
-        setAuthorByUserId((prev) => ({ ...prev, ...map }))
-        await mergeEngagementForNewPosts(userId, list)
-      } else {
-        setAuthorByUserId(map)
-        setPosts(list)
-        await hydrateEngagement(userId, list)
+        }
+        void mergeRethingAuthorsIntoState(list, map)
+        const hasMore = list.length === FEED_PAGE_SIZE
+        if (append) {
+          setPosts((prev) => {
+            const seen = new Set(prev.map((p) => p.id))
+            const out = [...prev]
+            for (const p of list) {
+              if (!seen.has(p.id)) {
+                seen.add(p.id)
+                out.push(p)
+              }
+            }
+            return out
+          })
+          setAuthorByUserId((prev) => ({ ...prev, ...map }))
+          await mergeEngagementForNewPosts(userId, list)
+        } else {
+          setAuthorByUserId(map)
+          setPosts(list)
+          await hydrateEngagement(userId, list)
+        }
+        setFeedHasMore(hasMore)
+      } finally {
+        if (!append) setFeedLoadingInitial(false)
       }
-      setFeedHasMore(hasMore)
     },
-    [hydrateEngagement, mergeEngagementForNewPosts],
+    [hydrateEngagement, mergeEngagementForNewPosts, mergeRethingAuthorsIntoState],
   )
 
   const fetchEverythingFeed = useCallback(
     async (userId: string, options?: FeedFetchOptions) => {
       const offset = options?.offset ?? 0
       const append = options?.append ?? false
-      const list = await fetchRecentPostsGlobal(supabase, FEED_PAGE_SIZE, offset).catch((error) => {
-        console.error('Error fetching global feed:', error)
-        return [] as Post[]
-      })
-      const authorIds = [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
-      const map: Record<string, AuthorMeta> = {}
-      for (let i = 0; i < authorIds.length; i += PROFILE_IN_CHUNK) {
-        const slice = authorIds.slice(i, i + PROFILE_IN_CHUNK)
-        const { data: profs, error: profErr } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, avatar_url')
-          .in('id', slice)
-        if (profErr) {
-          console.error('Error loading global feed author profiles:', profErr)
-          continue
-        }
-        for (const p of profs || []) {
-          map[p.id] = {
-            username: p.username,
-            display_name: p.display_name,
-            avatar_url: p.avatar_url ?? null,
+      if (!append) setFeedLoadingInitial(true)
+      try {
+        const list = await fetchRecentPostsGlobal(supabase, FEED_PAGE_SIZE, offset).catch((error) => {
+          console.error('Error fetching global feed:', error)
+          return [] as Post[]
+        })
+        const authorIds = [...new Set(list.map((p) => p.user_id).filter((id): id is string => Boolean(id)))]
+        const map: Record<string, AuthorMeta> = {}
+        for (let i = 0; i < authorIds.length; i += PROFILE_IN_CHUNK) {
+          const slice = authorIds.slice(i, i + PROFILE_IN_CHUNK)
+          const { data: profs, error: profErr } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url')
+            .in('id', slice)
+          if (profErr) {
+            console.error('Error loading global feed author profiles:', profErr)
+            continue
           }
-        }
-      }
-      await mergeProfilesForRethingUsernames(supabase, list, map)
-      const hasMore = list.length === FEED_PAGE_SIZE
-      if (append) {
-        setPosts((prev) => {
-          const seen = new Set(prev.map((p) => p.id))
-          const out = [...prev]
-          for (const p of list) {
-            if (!seen.has(p.id)) {
-              seen.add(p.id)
-              out.push(p)
+          for (const p of profs || []) {
+            map[p.id] = {
+              username: p.username,
+              display_name: p.display_name,
+              avatar_url: p.avatar_url ?? null,
             }
           }
-          return out
-        })
-        setAuthorByUserId((prev) => ({ ...prev, ...map }))
-        await mergeEngagementForNewPosts(userId, list)
-      } else {
-        setAuthorByUserId(map)
-        setPosts(list)
-        await hydrateEngagement(userId, list)
+        }
+        void mergeRethingAuthorsIntoState(list, map)
+        const hasMore = list.length === FEED_PAGE_SIZE
+        if (append) {
+          setPosts((prev) => {
+            const seen = new Set(prev.map((p) => p.id))
+            const out = [...prev]
+            for (const p of list) {
+              if (!seen.has(p.id)) {
+                seen.add(p.id)
+                out.push(p)
+              }
+            }
+            return out
+          })
+          setAuthorByUserId((prev) => ({ ...prev, ...map }))
+          await mergeEngagementForNewPosts(userId, list)
+        } else {
+          setAuthorByUserId(map)
+          setPosts(list)
+          await hydrateEngagement(userId, list)
+        }
+        setFeedHasMore(hasMore)
+      } finally {
+        if (!append) setFeedLoadingInitial(false)
       }
-      setFeedHasMore(hasMore)
     },
-    [hydrateEngagement, mergeEngagementForNewPosts],
+    [hydrateEngagement, mergeEngagementForNewPosts, mergeRethingAuthorsIntoState],
   )
 
   const runHomeBootstrap = useCallback(async (userId: string) => {
     const { data: follows, error: followErr } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     if (followErr) console.error('Error fetching follows (bootstrap):', followErr)
     const rows = follows || []
-    const n = rows.length
-    setFollowingOtherCount(n)
-    setFollowingUserIds(
-      new Set(rows.map((f) => f.following_id as string).filter((id): id is string => Boolean(id))),
-    )
+    const followingIds = [...new Set(rows.map((f) => f.following_id as string).filter((id): id is string => Boolean(id)))]
+    setFollowingOtherCount(followingIds.length)
+    setFollowingUserIds(new Set(followingIds))
+    return followingIds
   }, [])
 
   const loadPublicPreviewPostsRef = useRef(loadPublicPreviewPosts)
   loadPublicPreviewPostsRef.current = loadPublicPreviewPosts
   const runHomeBootstrapRef = useRef(runHomeBootstrap)
   runHomeBootstrapRef.current = runHomeBootstrap
+  const bootstrapFollowingIdsRef = useRef<string[] | null>(null)
   /** Last user id we started home bootstrap for; avoids setFeedBootstrapped(false) on spurious effect re-runs. */
   const lastHomeBootstrapUidRef = useRef<string | null>(null)
 
@@ -675,31 +706,43 @@ export default function Home() {
   }
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user: u } }) => {
-      setUser(u)
-      if (u) void loadProfile(u.id)
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      const nextUser = session?.user ?? null
+      setUser(nextUser)
+      if (nextUser) void loadProfile(nextUser.id)
+      else {
+        setProfile(null)
+        setNeedsUsername(false)
+        setProfileModulesForComposer([])
+      }
+      setAuthResolved(true)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
+        setAuthResolved(true)
         setUser(null)
         setProfile(null)
         setNeedsUsername(false)
+        setProfileModulesForComposer([])
         return
       }
       if (event === 'INITIAL_SESSION') {
+        setAuthResolved(true)
         const u = session?.user ?? null
         setUser(u)
         if (u) void loadProfile(u.id)
         else {
           setProfile(null)
           setNeedsUsername(false)
+          setProfileModulesForComposer([])
         }
         return
       }
       if (session?.user) {
+        setAuthResolved(true)
         setUser(session.user)
         if (event !== 'TOKEN_REFRESHED') void loadProfile(session.user.id)
       }
@@ -709,9 +752,11 @@ export default function Home() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Only `user?.id` in deps: callback identities must not retrigger bootstrap. `userRef` supplies the latest
-  // User for avatar sync. `lastHomeBootstrapUidRef` avoids flipping feedBootstrapped off unless the account changed.
+  // Only `user?.id` in deps once auth has resolved: callback identities must not retrigger bootstrap. `userRef`
+  // supplies the latest User for avatar sync. `lastHomeBootstrapUidRef` avoids flipping feedBootstrapped off unless
+  // the account changed.
   useEffect(() => {
+    if (!authResolved) return
     if (!user?.id) {
       lastHomeBootstrapUidRef.current = null
       setLikeCounts({})
@@ -720,6 +765,7 @@ export default function Home() {
       setRethingCounts({})
       setFollowingOtherCount(null)
       setFollowingUserIds(new Set())
+      setFeedLoadingInitial(false)
       setFeedHasMore(false)
       setFeedLoadingMore(false)
       setFeedBootstrapped(true)
@@ -737,13 +783,13 @@ export default function Home() {
     void (async () => {
       await syncAvatarToProfile(sessionUser)
       if (cancelled) return
-      await runHomeBootstrapRef.current(sessionUser.id)
+      bootstrapFollowingIdsRef.current = await runHomeBootstrapRef.current(sessionUser.id)
       if (!cancelled) setFeedBootstrapped(true)
     })()
     return () => {
       cancelled = true
     }
-  }, [user?.id])
+  }, [authResolved, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -1248,6 +1294,13 @@ export default function Home() {
   const showPeopleDirectory = Boolean(
     user?.id && profile && feedBootstrapped && feedScope === 'following' && pickPeopleVisible,
   )
+  const showSignedInLoadingState = Boolean(
+    authResolved &&
+      user?.id &&
+      !needsUsername &&
+      !showPeopleDirectory &&
+      (profileLoading || !feedBootstrapped || (feedLoadingInitial && posts.length === 0)),
+  )
   // If we already have rows, always show them — do not require feedBootstrapped (it can flicker false during auth churn).
   const showSignedInPostFeed = Boolean(
     user?.id &&
@@ -1303,7 +1356,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (!user?.id || !feedBootstrapped) return
+    if (!authResolved || !user?.id || !feedBootstrapped) return
     if (feedScope === 'following' && followingOtherCount === null) return
     setFeedHasMore(false)
     void (async () => {
@@ -1318,9 +1371,12 @@ export default function Home() {
         setFeedHasMore(false)
         return
       }
-      await fetchFeedForUser(user.id)
+      const preloadedFollowingIds = bootstrapFollowingIdsRef.current
+      bootstrapFollowingIdsRef.current = null
+      await fetchFeedForUser(user.id, preloadedFollowingIds ?? undefined)
     })()
   }, [
+    authResolved,
     user?.id,
     feedScope,
     feedBootstrapped,
@@ -1348,6 +1404,8 @@ export default function Home() {
     (profile?.avatar_url as string | undefined) || (user?.user_metadata?.avatar_url as string | undefined)
   const activeTypeButton = (type: ComposerType) => panel === type
   const textCount = stripHtml(textContent).length
+  const showPublicFeedLoadingState = Boolean(authResolved && !user && publicPreviewLoading && posts.length === 0)
+  const showFeedSkeleton = Boolean(!authResolved || showSignedInLoadingState || showPublicFeedLoadingState)
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
@@ -1452,17 +1510,19 @@ export default function Home() {
           <h1 className="min-w-0 text-xl font-light leading-snug tracking-tight text-zinc-900 sm:text-2xl md:text-3xl">
             Things I Like
           </h1>
-          {user ? (
+          {authResolved && user ? (
             <UserNavMenu
               username={profile?.username ?? null}
               avatarUrl={avatarUrl}
               onSignOut={signOut}
               hasUnreadNotifications={notifUnread}
             />
-          ) : (
+          ) : authResolved ? (
             <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">
               Sign in with Google
             </button>
+          ) : (
+            <div className="h-10 w-32 animate-pulse rounded-md bg-zinc-200/80" aria-hidden="true" />
           )}
         </header>
 
@@ -1477,7 +1537,7 @@ export default function Home() {
           </form>
         ) : null}
 
-        {!user ? (
+        {authResolved && !user ? (
           <div className="mb-10 rounded-md border border-zinc-200 bg-white p-6 text-center">
             <p className="mb-3 text-zinc-500">Sign in to start sharing things you like.</p>
             <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">Sign in with Google</button>
@@ -2176,7 +2236,7 @@ export default function Home() {
               </div>
             ) : null}
           </section>
-          {user && profile && feedBootstrapped && !needsUsername ? (
+          {user && profile && !needsUsername ? (
             <div className="mb-8 flex justify-center" role="tablist" aria-label="Home feed">
               <div className="flex w-full max-w-sm rounded-[4px] border border-[#dbdbdb] bg-white p-0.5 sm:max-w-md">
                 <button
@@ -2252,20 +2312,22 @@ export default function Home() {
         ) : null}
 
         <section className="space-y-6">
-          {!user && posts.length > 0 ? (
+          {authResolved && !user && posts.length > 0 ? (
             <h2 className="text-sm font-medium text-zinc-600">Latest posts</h2>
           ) : null}
-          {user && profile && feedBootstrapped && !showPeopleDirectory && posts.length === 0 ? (
+          {showFeedSkeleton ? <HomeFeedSkeleton /> : null}
+          {!showFeedSkeleton && user && profile && feedBootstrapped && !showPeopleDirectory && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">
               {feedScope === 'everything'
                 ? 'Nothing here yet. Check back as people post.'
                 : 'No posts yet. Follow someone or share something you like.'}
             </p>
           ) : null}
-          {!user && posts.length === 0 ? (
+          {!showFeedSkeleton && authResolved && !user && posts.length === 0 ? (
             <p className="py-12 text-center text-zinc-400">Nothing posted yet. Sign in to share something you like.</p>
           ) : null}
-          {(!user || showSignedInPostFeed) &&
+          {!showFeedSkeleton &&
+            (!user || showSignedInPostFeed) &&
             posts.map((post) => {
             const author = post.user_id ? authorByUserId[post.user_id] : undefined
             const rethingOrig = authorMetaForRethingFromUsername(authorByUserId, post.rething_from_username)

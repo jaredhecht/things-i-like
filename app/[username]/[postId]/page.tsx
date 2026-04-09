@@ -1,17 +1,126 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { unstable_cache } from 'next/cache'
 import { notFound } from 'next/navigation'
 import { FollowButton } from '@/src/components/FollowButton'
 import { PostCard } from '@/src/components/PostCard'
 import type { Post } from '@/src/lib/post-helpers'
 import { buildPublicPostUrl, isPublicPostIdParam } from '@/src/lib/public-post-url'
-import { getSiteOrigin } from '@/src/lib/site-origin'
 import { createSupabaseServer } from '@/src/lib/supabase-server'
 import { authorMetaForRethingFromUsername, mergeProfilesForRethingUsernames } from '@/src/lib/merge-rething-author-profiles'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 const RESERVED = new Set(['auth', 'api', 'settings', 'whos-here', 'notifications', 'bookmarks'])
+const SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '') || 'https://thingsilike.app'
+
+type PublicPostPageData = {
+  profile: {
+    id: string
+    username: string
+    display_name: string | null
+    avatar_url: string | null
+  }
+  post: Post | null
+  rethingFromAvatarUrl: string | null
+}
+
+const getPublicPostPageData = unstable_cache(
+  async (slug: string, postId: string): Promise<PublicPostPageData | null> => {
+    const supabase = createSupabaseServer()
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar_url')
+      .eq('username', slug)
+      .maybeSingle()
+
+    if (profileError) {
+      throw new Error(profileError.message)
+    }
+    if (!profile) return null
+
+    const normalizedProfile = {
+      id: profile.id as string,
+      username: profile.username as string,
+      display_name: typeof profile.display_name === 'string' ? profile.display_name : null,
+      avatar_url: typeof profile.avatar_url === 'string' ? profile.avatar_url.trim() || null : null,
+    }
+
+    const { data: row, error: postError } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('id', postId)
+      .eq('user_id', normalizedProfile.id)
+      .maybeSingle()
+
+    if (postError) {
+      throw new Error(postError.message)
+    }
+    if (!row) {
+      return {
+        profile: normalizedProfile,
+        post: null,
+        rethingFromAvatarUrl: null,
+      }
+    }
+
+    const post = row as Post
+    const authorLookup = {
+      [normalizedProfile.id]: {
+        username: normalizedProfile.username,
+        display_name: normalizedProfile.display_name,
+        avatar_url: normalizedProfile.avatar_url,
+      },
+    }
+    await mergeProfilesForRethingUsernames(supabase, [post], authorLookup)
+    const rethingOrig = authorMetaForRethingFromUsername(authorLookup, post.rething_from_username)
+
+    return {
+      profile: normalizedProfile,
+      post,
+      rethingFromAvatarUrl: rethingOrig?.avatar_url ?? null,
+    }
+  },
+  ['public-post-page-v1'],
+  { revalidate: 300 },
+)
+
+const getPublicPostMetadataData = unstable_cache(
+  async (slug: string, postId: string) => {
+    const supabase = createSupabaseServer()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, username, display_name')
+      .eq('username', slug)
+      .maybeSingle()
+
+    if (!profile) return null
+
+    const { data: post } = await supabase
+      .from('posts')
+      .select('type, caption, content')
+      .eq('id', postId)
+      .eq('user_id', profile.id)
+      .maybeSingle()
+
+    return {
+      profile: {
+        id: profile.id as string,
+        username: profile.username as string,
+        display_name: typeof profile.display_name === 'string' ? profile.display_name : null,
+      },
+      post: post
+        ? {
+            type: typeof post.type === 'string' ? post.type : '',
+            caption: typeof post.caption === 'string' ? post.caption : null,
+            content: typeof post.content === 'string' ? post.content : null,
+          }
+        : null,
+    }
+  },
+  ['public-post-metadata-v1'],
+  { revalidate: 300 },
+)
 
 export async function generateMetadata({
   params,
@@ -27,25 +136,14 @@ export async function generateMetadata({
     return { title: 'Post · Things I Like', openGraph: { siteName: 'Things I Like' }, twitter: { card: 'summary_large_image' } }
   }
 
-  const supabase = createSupabaseServer()
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, username, display_name')
-    .eq('username', slug)
-    .maybeSingle()
-
-  if (!profile) {
+  const metadataData = await getPublicPostMetadataData(slug, postId)
+  if (!metadataData?.profile) {
     return { title: 'Post · Things I Like', openGraph: { siteName: 'Things I Like' }, twitter: { card: 'summary_large_image' } }
   }
 
-  const { data: post } = await supabase
-    .from('posts')
-    .select('type, caption, content')
-    .eq('id', postId)
-    .eq('user_id', profile.id)
-    .maybeSingle()
+  const { profile, post } = metadataData
 
-  const handle = profile.username as string
+  const handle = profile.username
   if (!post) {
     return {
       title: `Post · @${handle}`,
@@ -91,28 +189,22 @@ export default async function PublicPostPage({ params }: { params: Promise<{ use
   if (RESERVED.has(slug)) notFound()
   if (!isPublicPostIdParam(postId)) notFound()
 
-  const supabase = createSupabaseServer()
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, avatar_url')
-    .eq('username', slug)
-    .maybeSingle()
-
-  if (profileError) {
-    console.error('[username/postId] profile:', profileError.message)
+  let data: PublicPostPageData | null = null
+  try {
+    data = await getPublicPostPageData(slug, postId)
+  } catch (error) {
+    console.error('[username/postId] public post loader failed:', slug, postId, error)
     notFound()
   }
-  if (!profile) notFound()
+  if (!data) notFound()
 
-  const { data: row } = await supabase.from('posts').select('*').eq('id', postId).eq('user_id', profile.id).maybeSingle()
-
-  const origin = await getSiteOrigin()
-  const shareUrl = buildPublicPostUrl(origin, profile.username as string, postId)
+  const { profile, post, rethingFromAvatarUrl } = data
+  const shareUrl = buildPublicPostUrl(SITE_ORIGIN, profile.username, postId)
   const returnPath = `/${profile.username}/${postId}`
   const displayName =
     (typeof profile.display_name === 'string' && profile.display_name.trim()) || `@${profile.username}`
 
-  if (!row) {
+  if (!post) {
     return (
       <main className="min-h-screen bg-[#fafafa]">
         <div className="mx-auto max-w-2xl px-4 py-16 text-center">
@@ -132,17 +224,7 @@ export default async function PublicPostPage({ params }: { params: Promise<{ use
     )
   }
 
-  const post = row as Post
-  const avatarUrl = typeof profile.avatar_url === 'string' ? profile.avatar_url.trim() : ''
-  const authorLookup = {
-    [profile.id as string]: {
-      username: profile.username as string,
-      display_name: typeof profile.display_name === 'string' ? profile.display_name : null,
-      avatar_url: avatarUrl || null,
-    },
-  }
-  await mergeProfilesForRethingUsernames(supabase, [post], authorLookup)
-  const rethingOrig = authorMetaForRethingFromUsername(authorLookup, post.rething_from_username)
+  const avatarUrl = profile.avatar_url?.trim() || ''
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
@@ -183,7 +265,7 @@ export default async function PublicPostPage({ params }: { params: Promise<{ use
           isOwner={false}
           authorUsername={profile.username as string}
           authorAvatarUrl={avatarUrl || null}
-          rethingFromAvatarUrl={rethingOrig?.avatar_url ?? null}
+          rethingFromAvatarUrl={rethingFromAvatarUrl}
           showAuthor={false}
           shareUrl={shareUrl}
         />

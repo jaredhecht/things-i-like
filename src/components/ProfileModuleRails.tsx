@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useAuth } from '@/src/components/AuthProvider'
 import { InlinePostEditor } from '@/src/components/InlinePostEditor'
 import { PostCard } from '@/src/components/PostCard'
 import { PostModulesSheet } from '@/src/components/PostModulesSheet'
@@ -100,7 +101,8 @@ export function ProfileModuleRails({
   initialLikeCounts: Record<string, number>
 }) {
   const router = useRouter()
-  const [userId, setUserId] = useState<string | null>(null)
+  const { authResolved, user } = useAuth()
+  const userId = user?.id ?? null
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() => ({ ...initialLikeCounts }))
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
@@ -183,28 +185,13 @@ export function ProfileModuleRails({
   }, [allRailPostIds.join(',')])
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      const uid = user?.id ?? null
-      setUserId(uid)
-      if (uid) void hydrateMyEngagement(uid, allRailPostIds)
-      else {
-        setLikedPostIds(new Set())
-        setBookmarkedPostIds(new Set())
-      }
-    })
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_e, session) => {
-      const uid = session?.user?.id ?? null
-      setUserId(uid)
-      if (uid) void hydrateMyEngagement(uid, allRailPostIds)
-      else {
-        setLikedPostIds(new Set())
-        setBookmarkedPostIds(new Set())
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [allRailPostIds.join(','), hydrateMyEngagement])
+    if (!authResolved) return
+    if (userId) void hydrateMyEngagement(userId, allRailPostIds)
+    else {
+      setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
+    }
+  }, [allRailPostIds.join(','), authResolved, hydrateMyEngagement, userId])
 
   useEffect(() => {
     if (!isOwnProfile) {

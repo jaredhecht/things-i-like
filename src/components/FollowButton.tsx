@@ -1,8 +1,8 @@
 'use client'
 
-import type { User } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/src/components/AuthProvider'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
@@ -19,19 +19,18 @@ export function FollowButton({
   /** Called after a successful follow or unfollow (not on initial load). */
   onFollowChange?: () => void
 }) {
-  const [user, setUser] = useState<User | null>(null)
+  const { authResolved, user } = useAuth()
   const [following, setFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
-  const loadFollowState = useCallback(async (u: User | null) => {
-    setUser(u)
-    if (!u) {
+  const loadFollowState = useCallback(async (userId: string | null) => {
+    if (!userId) {
       setFollowing(false)
       setLoading(false)
       return
     }
-    if (u.id === followingId) {
+    if (userId === followingId) {
       setFollowing(false)
       setLoading(false)
       return
@@ -39,7 +38,7 @@ export function FollowButton({
     const { data } = await supabase
       .from('follows')
       .select('follower_id')
-      .eq('follower_id', u.id)
+      .eq('follower_id', userId)
       .eq('following_id', followingId)
       .maybeSingle()
     setFollowing(!!data)
@@ -47,23 +46,10 @@ export function FollowButton({
   }, [followingId])
 
   useEffect(() => {
-    let cancelled = false
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (cancelled) return
-      void loadFollowState(session?.user ?? null)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setLoading(true)
-      void loadFollowState(session?.user ?? null)
-    })
-
-    return () => {
-      cancelled = true
-      subscription.unsubscribe()
-    }
-  }, [loadFollowState])
+    if (!authResolved) return
+    setLoading(true)
+    void loadFollowState(user?.id ?? null)
+  }, [authResolved, loadFollowState, user?.id])
 
   async function signInWithGoogle() {
     if (typeof window === 'undefined') return
@@ -96,7 +82,7 @@ export function FollowButton({
     setBusy(false)
   }
 
-  if (loading) {
+  if (!authResolved || loading) {
     return <span className="inline-block h-7 w-[4.25rem] animate-pulse rounded-full bg-zinc-200" aria-hidden />
   }
 

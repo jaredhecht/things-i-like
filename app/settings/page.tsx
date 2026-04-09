@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { User } from '@supabase/supabase-js'
+import { useAuth } from '@/src/components/AuthProvider'
 import { ElsewhereSettingsSection } from '@/src/components/ElsewhereSettingsSection'
 import { ModulesSettingsSection } from '@/src/components/ModulesSettingsSection'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
@@ -83,7 +83,7 @@ type Profile = {
 
 export default function SettingsPage() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const { authResolved, user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -93,12 +93,9 @@ export default function SettingsPage() {
   const [bioSaving, setBioSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const load = useCallback(async () => {
-    const {
-      data: { user: u },
-    } = await supabase.auth.getUser()
-    setUser(u)
-    if (!u) {
+  const load = useCallback(async (userId: string | null) => {
+    setLoading(true)
+    if (!userId) {
       setProfile(null)
       setLoading(false)
       return
@@ -106,23 +103,16 @@ export default function SettingsPage() {
     const { data } = await supabase
       .from('profiles')
       .select('id, username, display_name, avatar_url, bio, elsewhere_visible')
-      .eq('id', u.id)
+      .eq('id', userId)
       .maybeSingle()
     setProfile(data as Profile | null)
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    void load()
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (!session?.user) setProfile(null)
-      else void load()
-    })
-    return () => subscription.unsubscribe()
-  }, [load])
+    if (!authResolved) return
+    void load(user?.id ?? null)
+  }, [authResolved, load, user?.id])
 
   useEffect(() => {
     if (profile) setBioDraft(profile.bio ?? '')
@@ -138,7 +128,7 @@ export default function SettingsPage() {
       setBioSaving(false)
       return
     }
-    await load()
+    await load(user.id)
     setBioSaving(false)
   }
 
@@ -182,7 +172,7 @@ export default function SettingsPage() {
       setUploading(false)
       return
     }
-    await load()
+    await load(user.id)
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -400,7 +390,7 @@ export default function SettingsPage() {
             onElsewhereVisibleChange={(v) =>
               setProfile((p) => (p ? { ...p, elsewhere_visible: v } : p))
             }
-            onRefreshProfile={load}
+            onRefreshProfile={() => load(user.id)}
           />
         ) : null}
 

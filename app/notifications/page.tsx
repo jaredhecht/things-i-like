@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/src/components/AuthProvider'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
 
@@ -33,7 +34,8 @@ function NotificationsListSkeleton() {
 }
 
 export default function NotificationsPage() {
-  const [userId, setUserId] = useState<string | null>(null)
+  const { authResolved, user } = useAuth()
+  const userId = user?.id ?? null
   const [myUsername, setMyUsername] = useState<string | null>(null)
   const [rows, setRows] = useState<NotifRow[]>([])
   const [actorNames, setActorNames] = useState<Record<string, string>>({})
@@ -69,14 +71,10 @@ export default function NotificationsPage() {
     await loadActorNames(list)
   }, [loadActorNames])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (uid: string | null) => {
+    setLoading(true)
     setLoadError(null)
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    const user = session?.user ?? null
-    if (!user) {
-      setUserId(null)
+    if (!uid) {
       setMyUsername(null)
       setRows([])
       setActorNames({})
@@ -84,13 +82,12 @@ export default function NotificationsPage() {
       setLoading(false)
       return
     }
-    setUserId(user.id)
-    const { data: prof } = await supabase.from('profiles').select('username').eq('id', user.id).maybeSingle()
+    const { data: prof } = await supabase.from('profiles').select('username').eq('id', uid).maybeSingle()
     setMyUsername(typeof prof?.username === 'string' ? prof.username : null)
     setActorNames({})
     try {
-      await loadPage(user.id, 0, true)
-      await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', user.id).is('read_at', null)
+      await loadPage(uid, 0, true)
+      await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', uid).is('read_at', null)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Could not load notifications.')
       setRows([])
@@ -102,8 +99,9 @@ export default function NotificationsPage() {
   }, [loadPage])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (!authResolved) return
+    void load(userId)
+  }, [authResolved, load, userId])
 
   async function loadMore() {
     if (!userId || loadingMore || !hasMore) return
@@ -119,7 +117,7 @@ export default function NotificationsPage() {
     }
   }
 
-  if (loading) {
+  if (!authResolved || loading) {
     return (
       <main className="min-h-screen bg-[#fafafa]">
         <div className="mx-auto max-w-lg px-4 py-10">

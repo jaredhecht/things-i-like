@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import type { User } from '@supabase/supabase-js'
+import { useAuth } from '@/src/components/AuthProvider'
 import { PostCard } from '@/src/components/PostCard'
 import { oauthSignInRedirectOptions } from '@/src/lib/oauth-redirect'
 import { supabase } from '@/src/lib/supabase'
@@ -21,7 +21,7 @@ type AuthorMeta = {
 }
 
 export default function BookmarksPage() {
-  const [user, setUser] = useState<User | null>(null)
+  const { authResolved, user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [posts, setPosts] = useState<Post[]>([])
   const [authorByUserId, setAuthorByUserId] = useState<Record<string, AuthorMeta>>({})
@@ -29,13 +29,9 @@ export default function BookmarksPage() {
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [rethingCounts, setRethingCounts] = useState<Record<string, number>>({})
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (userId: string | null) => {
     setLoading(true)
-    const {
-      data: { user: u },
-    } = await supabase.auth.getUser()
-    setUser(u)
-    if (!u) {
+    if (!userId) {
       setPosts([])
       setAuthorByUserId({})
       setLikeCounts({})
@@ -48,7 +44,7 @@ export default function BookmarksPage() {
     const { data: marks, error: markErr } = await supabase
       .from('post_bookmarks')
       .select('post_id, created_at')
-      .eq('user_id', u.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
 
     if (markErr) {
@@ -98,7 +94,7 @@ export default function BookmarksPage() {
     setPosts(list)
     setAuthorByUserId(map)
 
-    const { likeCounts: countByPost, likedPostIds: myLiked } = await fetchEngagementForPostIds(supabase, u.id, ids)
+    const { likeCounts: countByPost, likedPostIds: myLiked } = await fetchEngagementForPostIds(supabase, userId, ids)
     const rethingByPost = await fetchRethingCountsForPostIds(supabase, ids)
     setLikeCounts(countByPost)
     setLikedPostIds(myLiked)
@@ -107,12 +103,9 @@ export default function BookmarksPage() {
   }, [])
 
   useEffect(() => {
-    void load()
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => void load())
-    return () => subscription.unsubscribe()
-  }, [load])
+    if (!authResolved) return
+    void load(user?.id ?? null)
+  }, [authResolved, load, user?.id])
 
   async function toggleLike(postId: string) {
     if (!user?.id) return

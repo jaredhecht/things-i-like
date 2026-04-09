@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/src/components/AuthProvider'
 import { InlinePostEditor } from '@/src/components/InlinePostEditor'
 import { PostCard } from '@/src/components/PostCard'
 import { supabase } from '@/src/lib/supabase'
@@ -23,7 +24,8 @@ export function ProfilePostList({
   initialLikeCounts: Record<string, number>
 }) {
   const router = useRouter()
-  const [userId, setUserId] = useState<string | null>(null)
+  const { authResolved, user } = useAuth()
+  const userId = user?.id ?? null
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() => ({ ...initialLikeCounts }))
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(() => new Set())
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(() => new Set())
@@ -105,28 +107,13 @@ export function ProfilePostList({
 
   useEffect(() => {
     const ids = posts.map((p) => p.id)
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      const uid = user?.id ?? null
-      setUserId(uid)
-      if (uid) void hydrateMyEngagement(uid, ids)
-      else {
-        setLikedPostIds(new Set())
-        setBookmarkedPostIds(new Set())
-      }
-    })
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_e, session) => {
-      const uid = session?.user?.id ?? null
-      setUserId(uid)
-      if (uid) void hydrateMyEngagement(uid, ids)
-      else {
-        setLikedPostIds(new Set())
-        setBookmarkedPostIds(new Set())
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [posts, hydrateMyEngagement])
+    if (!authResolved) return
+    if (userId) void hydrateMyEngagement(userId, ids)
+    else {
+      setLikedPostIds(new Set())
+      setBookmarkedPostIds(new Set())
+    }
+  }, [authResolved, posts, hydrateMyEngagement, userId])
 
   useEffect(() => {
     if (!postMenuOpenId) return

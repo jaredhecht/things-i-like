@@ -1,16 +1,14 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
+import { useAuth } from '../src/components/AuthProvider'
 import { ComposerTypeIcon } from '../src/components/ComposerTypeIcons'
-import { ComposerModuleChips } from '../src/components/ComposerModuleChips'
-import { InlinePostEditor } from '../src/components/InlinePostEditor'
 import { PostCard } from '../src/components/PostCard'
-import { RichTextEditor } from '../src/components/RichTextEditor'
 import { HomeLegalFooter } from '../src/components/HomeLegalFooter'
 import { HomeFeedSkeleton } from '../src/components/HomePageSkeleton'
-import { PeopleWhoLikeThingsDirectory } from '../src/components/PeopleWhoLikeThingsDirectory'
 import { UserNavMenu } from '../src/components/UserNavMenu'
 import {
   getSoundCloudWidgetSrc,
@@ -30,10 +28,7 @@ import {
 } from '../src/lib/post-helpers'
 import { fetchRecentPostsForAuthorIds, fetchRecentPostsGlobal } from '../src/lib/posts-batched'
 import { fetchEngagementForPostIds } from '../src/lib/engagement-client'
-import { PostModulesSheet } from '../src/components/PostModulesSheet'
-import { classifyPostAfterSave } from '../src/lib/modules-ui'
 import type { ProfileModuleRow } from '../src/lib/modules-ui'
-import { fetchLinkPreviewClient } from '../src/lib/link-preview-client'
 import { sanitizeRichHtml } from '../src/lib/sanitize-rich-html'
 import { oauthSignInRedirectOptions } from '../src/lib/oauth-redirect'
 import { tagsFromComposerInputs, parsePostTags } from '../src/lib/post-tags'
@@ -44,13 +39,48 @@ import {
   mergeProfilesForRethingUsernames,
 } from '../src/lib/merge-rething-author-profiles'
 import { supabase } from '../src/lib/supabase'
-import {
-  cacheGooglePlacePhoto,
-  fetchPlaceAutocomplete,
-  fetchPlaceDetails,
-  type PlaceDetailsPayload,
-  type PlacePrediction,
-} from '../src/lib/places-client'
+import type { PlaceDetailsPayload, PlacePrediction } from '../src/lib/places-client'
+
+const RichTextEditor = dynamic(
+  () => import('../src/components/RichTextEditor').then((mod) => mod.RichTextEditor),
+)
+const ComposerModuleChips = dynamic(
+  () => import('../src/components/ComposerModuleChips').then((mod) => mod.ComposerModuleChips),
+)
+const PeopleWhoLikeThingsDirectory = dynamic(
+  () => import('../src/components/PeopleWhoLikeThingsDirectory').then((mod) => mod.PeopleWhoLikeThingsDirectory),
+)
+const InlinePostEditor = dynamic(
+  () => import('../src/components/InlinePostEditor').then((mod) => mod.InlinePostEditor),
+)
+const PostModulesSheet = dynamic(
+  () => import('../src/components/PostModulesSheet').then((mod) => mod.PostModulesSheet),
+)
+
+async function fetchLinkPreviewClientLazy(url: string) {
+  const { fetchLinkPreviewClient } = await import('../src/lib/link-preview-client')
+  return fetchLinkPreviewClient(url)
+}
+
+async function fetchPlaceAutocompleteLazy(input: string) {
+  const { fetchPlaceAutocomplete } = await import('../src/lib/places-client')
+  return fetchPlaceAutocomplete(input)
+}
+
+async function fetchPlaceDetailsLazy(placeId: string) {
+  const { fetchPlaceDetails } = await import('../src/lib/places-client')
+  return fetchPlaceDetails(placeId)
+}
+
+async function cacheGooglePlacePhotoLazy(photoReference: string) {
+  const { cacheGooglePlacePhoto } = await import('../src/lib/places-client')
+  return cacheGooglePlacePhoto(photoReference)
+}
+
+async function classifyPostAfterSaveLazy(postId: string) {
+  const { classifyPostAfterSave } = await import('../src/lib/modules-ui')
+  return classifyPostAfterSave(postId)
+}
 
 type Profile = {
   id: string
@@ -88,8 +118,7 @@ type FeedFetchOptions = { offset?: number; append?: boolean }
 
 export default function Home() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
-  const [authResolved, setAuthResolved] = useState(false)
+  const { authResolved, user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [needsUsername, setNeedsUsername] = useState(false)
@@ -230,7 +259,7 @@ export default function Home() {
     await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', u.id)
   }
 
-  async function loadProfile(userId: string) {
+  const loadProfile = useCallback(async (userId: string) => {
     setProfileLoading(true)
     try {
       const [{ data }, { data: mods }] = await Promise.all([
@@ -253,7 +282,7 @@ export default function Home() {
     } finally {
       setProfileLoading(false)
     }
-  }
+  }, [])
 
   async function claimUsername(e: React.FormEvent) {
     e.preventDefault()
@@ -281,7 +310,6 @@ export default function Home() {
   async function signOut() {
     if (typeof window !== 'undefined') localStorage.removeItem('til_home_feed_gate')
     await supabase.auth.signOut()
-    setUser(null)
     setProfile(null)
     setProfileModulesForComposer([])
     setComposerModuleIds(new Set())
@@ -697,7 +725,7 @@ export default function Home() {
       .single()
     if (error) alert(`Could not rething: ${error.message}`)
     else {
-      if (rethingRow?.id) void classifyPostAfterSave(rethingRow.id as string)
+      if (rethingRow?.id) void classifyPostAfterSaveLazy(rethingRow.id as string)
       setRethingSource(null)
       setRethingCaption('')
       await fetchFeed()
@@ -706,51 +734,15 @@ export default function Home() {
   }
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      const nextUser = session?.user ?? null
-      setUser(nextUser)
-      if (nextUser) void loadProfile(nextUser.id)
-      else {
-        setProfile(null)
-        setNeedsUsername(false)
-        setProfileModulesForComposer([])
-      }
-      setAuthResolved(true)
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setAuthResolved(true)
-        setUser(null)
-        setProfile(null)
-        setNeedsUsername(false)
-        setProfileModulesForComposer([])
-        return
-      }
-      if (event === 'INITIAL_SESSION') {
-        setAuthResolved(true)
-        const u = session?.user ?? null
-        setUser(u)
-        if (u) void loadProfile(u.id)
-        else {
-          setProfile(null)
-          setNeedsUsername(false)
-          setProfileModulesForComposer([])
-        }
-        return
-      }
-      if (session?.user) {
-        setAuthResolved(true)
-        setUser(session.user)
-        if (event !== 'TOKEN_REFRESHED') void loadProfile(session.user.id)
-      }
-      // TOKEN_REFRESHED: refresh user object only; do not clear user on null session; skip profile refetch
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
+    if (!authResolved) return
+    if (!user?.id) {
+      setProfile(null)
+      setNeedsUsername(false)
+      setProfileModulesForComposer([])
+      return
+    }
+    void loadProfile(user.id)
+  }, [authResolved, loadProfile, user?.id])
 
   // Only `user?.id` in deps once auth has resolved: callback identities must not retrigger bootstrap. `userRef`
   // supplies the latest User for avatar sync. `lastHomeBootstrapUidRef` avoids flipping feedBootstrapped off unless
@@ -1028,7 +1020,7 @@ export default function Home() {
     const t = window.setTimeout(() => {
       void (async () => {
         try {
-          const preds = await fetchPlaceAutocomplete(q)
+          const preds = await fetchPlaceAutocompleteLazy(q)
           if (!cancelled) setPlacePredictions(preds)
         } catch {
           if (!cancelled) setPlacePredictions([])
@@ -1078,7 +1070,7 @@ export default function Home() {
             : null
         if (cached) metadata.link_preview = cached
         else {
-          const preview = await fetchLinkPreviewClient(soleArticle)
+          const preview = await fetchLinkPreviewClientLazy(soleArticle)
           if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
         }
       } else {
@@ -1155,7 +1147,7 @@ export default function Home() {
       type !== 'place' &&
       type !== 'image'
     ) {
-      const preview = await fetchLinkPreviewClient(content)
+      const preview = await fetchLinkPreviewClientLazy(content)
       if (preview && linkPreviewHasVisual(preview)) metadata.link_preview = preview
     }
 
@@ -1181,7 +1173,7 @@ export default function Home() {
         const { error: mErr } = await supabase.from('post_modules_user').insert(rows)
         if (mErr) console.error('[modules] composer tags', mErr.message)
       }
-      if (newId) void classifyPostAfterSave(newId)
+      if (newId) void classifyPostAfterSaveLazy(newId)
       resetComposer()
       fetchFeed()
     }
@@ -1195,7 +1187,7 @@ export default function Home() {
     }
     setPreviewLoading(true)
     try {
-      const preview = await fetchLinkPreviewClient(url)
+      const preview = await fetchLinkPreviewClientLazy(url)
       setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
       return preview
     } finally {
@@ -1218,7 +1210,7 @@ export default function Home() {
       void (async () => {
         setPreviewLoading(true)
         try {
-          const preview = await fetchLinkPreviewClient(articleUrl.trim())
+          const preview = await fetchLinkPreviewClientLazy(articleUrl.trim())
           if (!cancelled) setLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
         } finally {
           if (!cancelled) setPreviewLoading(false)
@@ -1246,7 +1238,7 @@ export default function Home() {
       void (async () => {
         setTextComposerPreviewLoading(true)
         try {
-          const preview = await fetchLinkPreviewClient(textSoleArticle)
+          const preview = await fetchLinkPreviewClientLazy(textSoleArticle)
           if (!cancelled) setTextOnlyLinkPreview(linkPreviewHasVisual(preview) ? preview : null)
         } finally {
           if (!cancelled) setTextComposerPreviewLoading(false)
@@ -1725,7 +1717,7 @@ export default function Home() {
                                     void (async () => {
                                       setPlaceDetailsLoading(true)
                                       try {
-                                        const d = await fetchPlaceDetails(p.placeId)
+                                        const d = await fetchPlaceDetailsLazy(p.placeId)
                                         setPlaceDetails(d)
                                       } finally {
                                         setPlaceDetailsLoading(false)
@@ -1775,7 +1767,7 @@ export default function Home() {
                                 void (async () => {
                                   setPlaceGooglePhotoLoading(true)
                                   try {
-                                    const url = await cacheGooglePlacePhoto(placeDetails.photoReference!)
+                                    const url = await cacheGooglePlacePhotoLazy(placeDetails.photoReference!)
                                     if (url) setImageUrl(url)
                                   } finally {
                                     setPlaceGooglePhotoLoading(false)

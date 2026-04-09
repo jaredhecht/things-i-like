@@ -1,8 +1,8 @@
 'use client'
 
-import type { User } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/src/components/AuthProvider'
 import { PostCard } from '@/src/components/PostCard'
 import { UserNavMenu } from '@/src/components/UserNavMenu'
 import type { Post } from '@/src/lib/post-helpers'
@@ -33,7 +33,7 @@ export function TagFeed({
   initialPosts: Post[]
   initialAuthors: Record<string, AuthorMeta>
 }) {
-  const [user, setUser] = useState<User | null>(null)
+  const { authResolved, user } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [posts] = useState<Post[]>(initialPosts)
   const [authorByUserId] = useState(initialAuthors)
@@ -76,27 +76,22 @@ export function TagFeed({
     setRethingCounts(rethingByPost)
   }, [])
 
-  async function loadProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (data) setProfile(data as Profile)
-    else setProfile(null)
-  }
-
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user: u } }) => {
-      setUser(u)
-      if (u) void loadProfile(u.id)
-    })
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user ?? null
-      setUser(u)
-      if (u) void loadProfile(u.id)
+    if (!authResolved) return
+    if (!user?.id) {
+      setProfile(null)
+      return
+    }
+    let cancelled = false
+    void supabase.from('profiles').select('*').eq('id', user.id).single().then(({ data }) => {
+      if (cancelled) return
+      if (data) setProfile(data as Profile)
       else setProfile(null)
     })
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => {
+      cancelled = true
+    }
+  }, [authResolved, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -114,7 +109,6 @@ export function TagFeed({
 
   async function signOut() {
     await supabase.auth.signOut()
-    setUser(null)
     setProfile(null)
   }
 

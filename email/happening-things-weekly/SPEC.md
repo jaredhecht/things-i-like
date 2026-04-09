@@ -37,7 +37,7 @@ Full list for manual entry in Loops (name + type, tab-separated): **`loops-event
 
 **Strings:** `notificationsUrl`, `followingUrl`, `everythingUrl`
 
-**Per follower row (1–10):** `follower_N_username`, `follower_N_avatar_url`, `follower_N_profile_url` (empty string when unused)
+**Per follower row (1–5):** `follower_N_username`, `follower_N_avatar_url`, `follower_N_profile_url` (empty string when unused)
 
 **First-poster rows (1–15):** `firstposter_N_username`, `firstposter_N_avatar_url`, `firstposter_N_profile_url`
 

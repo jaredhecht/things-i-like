@@ -28,21 +28,6 @@ follower_4_profile_url	String
 follower_5_username	String
 follower_5_avatar_url	String
 follower_5_profile_url	String
-follower_6_username	String
-follower_6_avatar_url	String
-follower_6_profile_url	String
-follower_7_username	String
-follower_7_avatar_url	String
-follower_7_profile_url	String
-follower_8_username	String
-follower_8_avatar_url	String
-follower_8_profile_url	String
-follower_9_username	String
-follower_9_avatar_url	String
-follower_9_profile_url	String
-follower_10_username	String
-follower_10_avatar_url	String
-follower_10_profile_url	String
 
 firstposter_1_username	String
 firstposter_1_avatar_url	String

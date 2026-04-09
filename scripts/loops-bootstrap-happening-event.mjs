@@ -46,7 +46,7 @@ function sampleEventProperties() {
   }
   fillFollower(1, 'preview_one', `${site}/icon.svg`, `${site}/preview_one`)
   fillFollower(2, 'preview_two', `${site}/icon.svg`, `${site}/preview_two`)
-  for (let s = 3; s <= 10; s++) {
+  for (let s = 3; s <= 5; s++) {
     fillFollower(s, '', '', '')
   }
   const fillPoster = (slot, u, av, path) => {

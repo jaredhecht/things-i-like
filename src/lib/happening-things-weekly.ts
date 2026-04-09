@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const FOLLOWER_ROWS_IN_EMAIL = 10
+const FOLLOWER_ROWS_IN_EMAIL = 5
 const POST_IDS_CHUNK = 500
 
 /** Matches `email/happening-things-weekly/index.mjml` dataVariables. */

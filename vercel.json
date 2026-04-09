@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/happening-things-weekly",
-      "schedule": "0 22 * * 3"
+      "schedule": "0 21 * * 3"
     }
   ]
 }

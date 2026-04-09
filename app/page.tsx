@@ -204,6 +204,11 @@ export default function Home() {
     })
   }, [])
 
+  const refreshDashboardHome = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.location.reload()
+  }, [])
+
   function clearImageComposerState() {
     setImageLocalPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev)
@@ -1522,7 +1527,18 @@ export default function Home() {
       <div className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
         <header className="mb-5 flex items-center justify-between gap-3 sm:mb-8">
           <h1 className="min-w-0 text-xl font-light leading-snug tracking-tight text-zinc-900 sm:text-2xl md:text-3xl">
-            Things I Like
+            {authResolved && user ? (
+              <button
+                type="button"
+                onClick={refreshDashboardHome}
+                className="min-w-0 text-left transition-opacity hover:opacity-75"
+                aria-label="Refresh home page"
+              >
+                Things I Like
+              </button>
+            ) : (
+              'Things I Like'
+            )}
           </h1>
           {authResolved && user ? (
             <UserNavMenu

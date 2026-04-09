@@ -1571,14 +1571,14 @@ export default function Home() {
               Share something you like
             </p>
             <section className="overflow-hidden rounded-[4px] border border-[#dbdbdb] bg-white">
-              <div className="px-5 py-5 sm:px-5 sm:py-5">
-                <div className="flex flex-wrap justify-center gap-2 sm:flex-nowrap">
+              <div className="px-4 py-5 sm:px-5 sm:py-5">
+                <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 sm:flex-nowrap">
                   {(['image', 'video', 'audio', 'text', 'quote', 'link', 'place'] as ComposerType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
                     onClick={() => setPanel(panel === type ? null : type)}
-                    className={`inline-flex items-center justify-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-normal capitalize transition sm:px-3.5 sm:py-2 [&_svg]:h-4 [&_svg]:w-4 ${
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-normal capitalize transition [&_svg]:h-3.5 [&_svg]:w-3.5 sm:gap-2 sm:px-3.5 sm:py-2 sm:text-[12px] sm:[&_svg]:h-4 sm:[&_svg]:w-4 ${
                       activeTypeButton(type)
                         ? 'border-zinc-900 bg-zinc-900 text-white'
                         : 'border-[#dbdbdb] bg-white text-[#8e8e8e] hover:border-zinc-900 hover:text-zinc-900'

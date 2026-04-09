@@ -1,12 +1,18 @@
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const FOLLOWER_ROWS_IN_EMAIL = 5
 const POST_IDS_CHUNK = 500
 
-/** Matches `email/happening-things-weekly/index.mjml` dataVariables. */
+export type HappeningThingsFollower = {
+  username: string
+  avatarUrl: string
+  profileUrl: string
+}
+
 export type HappeningThingsDataVariables = {
   newFollowersCount: number
-  newFollowers: Array<{ username: string; avatarUrl: string; profileUrl: string }>
+  newFollowers: HappeningThingsFollower[]
   newFollowersOverflow: number
   notificationsUrl: string
   newLikesCount: number
@@ -14,8 +20,6 @@ export type HappeningThingsDataVariables = {
   followingUrl: string
   networkPostsCount: number
   everythingUrl: string
-  newMembersCount: number
-  newMembers: Array<{ username: string; avatarUrl: string; profileUrl: string }>
 }
 
 export function getHappeningThingsWindow(end: Date): { start: Date; end: Date } {
@@ -51,7 +55,7 @@ async function profilesByIds(admin: SupabaseClient, ids: string[]): Promise<Map<
   return map
 }
 
-function memberCard(siteUrl: string, p: ProfileRow): { username: string; avatarUrl: string; profileUrl: string } | null {
+function followerCard(siteUrl: string, p: ProfileRow): HappeningThingsFollower | null {
   const u = p.username?.trim()
   if (!u) return null
   return {
@@ -73,35 +77,6 @@ export async function fetchNetworkPostsCount(
     .lt('created_at', endIso)
   if (error) throw new Error(error.message)
   return count ?? 0
-}
-
-/** Users whose first-ever post timestamp falls in [start, end). Requires `happening_first_post_users_in_window` RPC in Supabase. */
-export async function fetchFirstPostAuthorsInWindow(
-  admin: SupabaseClient,
-  siteUrl: string,
-  startIso: string,
-  endIso: string,
-): Promise<Array<{ username: string; avatarUrl: string; profileUrl: string }>> {
-  const { data, error } = await admin.rpc('happening_first_post_users_in_window', {
-    window_start: startIso,
-    window_end: endIso,
-  })
-  if (error) {
-    throw new Error(
-      `${error.message} (run supabase/happening-things-weekly-rpc.sql if this function is missing)`,
-    )
-  }
-  const rows = (data || []) as { user_id?: string }[]
-  const ids = [...new Set(rows.map((r) => r.user_id).filter(Boolean) as string[])]
-  const profs = await profilesByIds(admin, ids)
-  const out: Array<{ username: string; avatarUrl: string; profileUrl: string }> = []
-  for (const id of ids) {
-    const p = profs.get(id)
-    if (!p) continue
-    const card = memberCard(siteUrl, p)
-    if (card) out.push(card)
-  }
-  return out
 }
 
 async function countLikesOnUserPostsInWindow(
@@ -159,9 +134,8 @@ export async function buildHappeningThingsDataVariables(args: {
   startIso: string
   endIso: string
   networkPostsCount: number
-  newMembers: HappeningThingsDataVariables['newMembers']
 }): Promise<HappeningThingsDataVariables> {
-  const { admin, siteUrl, recipientUserId, startIso, endIso, networkPostsCount, newMembers } = args
+  const { admin, siteUrl, recipientUserId, startIso, endIso, networkPostsCount } = args
 
   const notificationsUrl = `${siteUrl}/notifications`
   const followingUrl = `${siteUrl}/?feed=following`
@@ -180,11 +154,11 @@ export async function buildHappeningThingsDataVariables(args: {
   const totalNewFollowers = followerIdsOrdered.length
   const sliceIds = followerIdsOrdered.slice(0, FOLLOWER_ROWS_IN_EMAIL)
   const profs = await profilesByIds(admin, sliceIds)
-  const newFollowers: HappeningThingsDataVariables['newFollowers'] = []
+  const newFollowers: HappeningThingsFollower[] = []
   for (const fid of sliceIds) {
     const p = profs.get(fid)
     if (!p) continue
-    const card = memberCard(siteUrl, p)
+    const card = followerCard(siteUrl, p)
     if (card) newFollowers.push(card)
   }
 
@@ -192,8 +166,6 @@ export async function buildHappeningThingsDataVariables(args: {
     countLikesOnUserPostsInWindow(admin, recipientUserId, startIso, endIso),
     countFollowingPostsInWindow(admin, recipientUserId, startIso, endIso),
   ])
-
-  const newMembersCount = newMembers.length
 
   return {
     newFollowersCount: totalNewFollowers,
@@ -205,54 +177,7 @@ export async function buildHappeningThingsDataVariables(args: {
     followingUrl,
     networkPostsCount,
     everythingUrl,
-    newMembersCount,
-    newMembers,
   }
-}
-
-/** Loops event API: keep each string value under ~500 chars (see API debugging docs). */
-const LOOPS_EVENT_VALUE_MAX_CHARS = 450
-
-export function clampForLoopsEventString(s: string): string {
-  const t = s.trim()
-  if (t.length <= LOOPS_EVENT_VALUE_MAX_CHARS) return t
-  return `${t.slice(0, LOOPS_EVENT_VALUE_MAX_CHARS - 1)}…`
-}
-
-const FIRST_POSTER_SLOTS_IN_EVENT = 15
-
-/**
- * Flatten digest data for `POST /v1/events/send` — event properties are scalar only (no arrays).
- * Register these property names on the `happening_things_weekly` event in Loops before sending.
- */
-export function toHappeningThingsEventProperties(vars: HappeningThingsDataVariables): Record<string, string | number> {
-  const out: Record<string, string | number> = {
-    newFollowersCount: vars.newFollowersCount,
-    newFollowersOverflow: vars.newFollowersOverflow,
-    notificationsUrl: clampForLoopsEventString(vars.notificationsUrl),
-    newLikesCount: vars.newLikesCount,
-    followingPostsCount: vars.followingPostsCount,
-    followingUrl: clampForLoopsEventString(vars.followingUrl),
-    networkPostsCount: vars.networkPostsCount,
-    everythingUrl: clampForLoopsEventString(vars.everythingUrl),
-    newMembersCount: vars.newMembersCount,
-  }
-  for (let i = 0; i < FOLLOWER_ROWS_IN_EMAIL; i++) {
-    const slot = i + 1
-    const row = vars.newFollowers[i]
-    out[`follower_${slot}_username`] = row ? clampForLoopsEventString(row.username) : ''
-    out[`follower_${slot}_avatar_url`] = row ? clampForLoopsEventString(row.avatarUrl) : ''
-    out[`follower_${slot}_profile_url`] = row ? clampForLoopsEventString(row.profileUrl) : ''
-  }
-  for (let i = 0; i < FIRST_POSTER_SLOTS_IN_EVENT; i++) {
-    const slot = i + 1
-    const row = vars.newMembers[i]
-    out[`firstposter_${slot}_username`] = row ? clampForLoopsEventString(row.username) : ''
-    out[`firstposter_${slot}_avatar_url`] = row ? clampForLoopsEventString(row.avatarUrl) : ''
-    out[`firstposter_${slot}_profile_url`] = row ? clampForLoopsEventString(row.profileUrl) : ''
-  }
-  out.first_posters_overflow = Math.max(0, vars.newMembers.length - FIRST_POSTER_SLOTS_IN_EVENT)
-  return out
 }
 
 export function shouldSkipHappeningThingsSend(vars: HappeningThingsDataVariables): boolean {
@@ -260,12 +185,226 @@ export function shouldSkipHappeningThingsSend(vars: HappeningThingsDataVariables
     vars.newFollowersCount === 0 &&
     vars.newLikesCount === 0 &&
     vars.followingPostsCount === 0 &&
-    vars.networkPostsCount === 0 &&
-    vars.newMembersCount === 0
+    vars.networkPostsCount === 0
   )
 }
 
-export function happeningThingsIdempotencyKey(end: Date, recipientUserId: string): string {
-  const day = end.toISOString().slice(0, 10)
-  return `happening-${day}-${recipientUserId}`.slice(0, 100)
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural
+}
+
+export function happeningThingsSubjectLine(vars: HappeningThingsDataVariables): string {
+  const parts: string[] = []
+  if (vars.newFollowersCount > 0) parts.push(`${vars.newFollowersCount} ${pluralize(vars.newFollowersCount, 'follower')}`)
+  if (vars.newLikesCount > 0) parts.push(`${vars.newLikesCount} ${pluralize(vars.newLikesCount, 'like')}`)
+  if (vars.followingPostsCount > 0) parts.push(`${vars.followingPostsCount} ${pluralize(vars.followingPostsCount, 'new thing')}`)
+  if (parts.length === 0) return 'Things are Happening'
+  return `Things are Happening · ${parts.join(', ')}`
+}
+
+export function renderHappeningThingsEmailHtml(
+  vars: HappeningThingsDataVariables,
+  options: { unsubscribeUrl: string },
+): string {
+  const sections: string[] = []
+
+  if (vars.newFollowersCount > 0) {
+    const followerRows = vars.newFollowers
+      .map(
+        (row) => `
+          <tr>
+            <td style="width:44px;vertical-align:middle;padding:0 0 12px;">
+              <a href="${escapeHtml(row.profileUrl)}" style="text-decoration:none;">
+                <img src="${escapeHtml(row.avatarUrl)}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;object-fit:cover;" />
+              </a>
+            </td>
+            <td style="vertical-align:middle;padding:0 0 12px 12px;text-align:left;">
+              <a href="${escapeHtml(row.profileUrl)}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:500;">@${escapeHtml(row.username)}</a>
+            </td>
+          </tr>`,
+      )
+      .join('')
+
+    sections.push(`
+      <tr>
+        <td style="padding:24px 16px 8px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;">
+            <tr>
+              <td style="padding:24px;">
+                <div style="color:#71717a;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding-bottom:6px;">New followers</div>
+                <div style="color:#18181b;font-size:18px;font-weight:600;line-height:1.35;padding-bottom:16px;">
+                  ${vars.newFollowersCount} new ${pluralize(vars.newFollowersCount, 'follower')} this week
+                </div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  ${followerRows}
+                </table>
+                ${
+                  vars.newFollowersOverflow > 0
+                    ? `<div style="color:#71717a;font-size:13px;padding-top:4px;">and ${vars.newFollowersOverflow} more</div>`
+                    : ''
+                }
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`)
+  }
+
+  if (vars.newLikesCount > 0) {
+    sections.push(`
+      <tr>
+        <td style="padding:8px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;">
+            <tr>
+              <td style="padding:24px;">
+                <div style="color:#71717a;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding-bottom:6px;">New likes</div>
+                <div style="color:#18181b;font-size:18px;font-weight:600;line-height:1.35;">
+                  ${vars.newLikesCount} new ${pluralize(vars.newLikesCount, 'like')} on your things
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`)
+  }
+
+  if (vars.followingPostsCount > 0) {
+    sections.push(`
+      <tr>
+        <td style="padding:8px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;">
+            <tr>
+              <td style="padding:24px;">
+                <div style="color:#71717a;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding-bottom:6px;">From people you follow</div>
+                <div style="color:#18181b;font-size:18px;font-weight:600;line-height:1.35;padding-bottom:16px;">
+                  ${vars.followingPostsCount} new ${pluralize(vars.followingPostsCount, 'thing')} from people you follow
+                </div>
+                <a href="${escapeHtml(vars.followingUrl)}" style="display:inline-block;background:#18181b;border-radius:9999px;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;text-decoration:none;">See Things</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`)
+  }
+
+  if (vars.networkPostsCount > 0) {
+    sections.push(`
+      <tr>
+        <td style="padding:8px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;">
+            <tr>
+              <td style="padding:24px;">
+                <div style="color:#71717a;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding-bottom:6px;">All The Things</div>
+                <div style="color:#18181b;font-size:18px;font-weight:600;line-height:1.35;padding-bottom:16px;">
+                  ${vars.networkPostsCount} new ${pluralize(vars.networkPostsCount, 'thing')} were posted
+                </div>
+                <a href="${escapeHtml(vars.everythingUrl)}" style="display:inline-block;background:#18181b;border-radius:9999px;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;text-decoration:none;">See All The Things</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`)
+  }
+
+  return `<!DOCTYPE html>
+<html>
+  <body style="margin:0;background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#18181b;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;">
+            <tr>
+              <td style="padding:40px 24px 8px;text-align:center;">
+                <div style="font-size:28px;font-weight:300;line-height:1.2;letter-spacing:-0.02em;padding-bottom:8px;">Things I Like</div>
+                <div style="color:#71717a;font-size:12px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;">Things are Happening</div>
+              </td>
+            </tr>
+            ${sections.join('')}
+            <tr>
+              <td style="padding:16px 16px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;border-radius:6px;">
+                  <tr>
+                    <td style="padding:32px 24px;text-align:center;">
+                      <div style="font-size:17px;font-weight:600;padding-bottom:14px;">Like things? Share them.</div>
+                      <a href="${escapeHtml(vars.everythingUrl.replace('/?feed=everything', '/'))}" style="display:inline-block;background:#18181b;border-radius:9999px;color:#ffffff;font-size:14px;font-weight:600;padding:12px 24px;text-decoration:none;">Things I Like</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 24px 48px;text-align:center;color:#a1a1aa;font-size:12px;line-height:1.6;">
+                You&rsquo;re getting this weekly because you have weekly updates turned on for Things I Like.<br />
+                <a href="${escapeHtml(options.unsubscribeUrl)}" style="color:#71717a;">Unsubscribe</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
+export function renderHappeningThingsEmailText(
+  vars: HappeningThingsDataVariables,
+  options: { unsubscribeUrl: string },
+): string {
+  const lines = ['Things I Like', 'Things are Happening', '']
+
+  if (vars.newFollowersCount > 0) {
+    lines.push(`NEW FOLLOWERS`, `${vars.newFollowersCount} new ${pluralize(vars.newFollowersCount, 'follower')} this week`)
+    for (const follower of vars.newFollowers) lines.push(`- @${follower.username}`)
+    if (vars.newFollowersOverflow > 0) lines.push(`- and ${vars.newFollowersOverflow} more`)
+    lines.push('')
+  }
+
+  if (vars.newLikesCount > 0) {
+    lines.push('NEW LIKES', `${vars.newLikesCount} new ${pluralize(vars.newLikesCount, 'like')} on your things`, '')
+  }
+
+  if (vars.followingPostsCount > 0) {
+    lines.push(
+      'FROM PEOPLE YOU FOLLOW',
+      `${vars.followingPostsCount} new ${pluralize(vars.followingPostsCount, 'thing')} from people you follow`,
+      `See Things: ${vars.followingUrl}`,
+      '',
+    )
+  }
+
+  if (vars.networkPostsCount > 0) {
+    lines.push(
+      'ALL THE THINGS',
+      `${vars.networkPostsCount} new ${pluralize(vars.networkPostsCount, 'thing')} were posted`,
+      `See All The Things: ${vars.everythingUrl}`,
+      '',
+    )
+  }
+
+  lines.push('Like things? Share them.', vars.everythingUrl.replace('/?feed=everything', '/'), '', `Unsubscribe: ${options.unsubscribeUrl}`)
+  return lines.join('\n')
+}
+
+function weeklyDigestToken(secret: string, userId: string): string {
+  return createHmac('sha256', secret).update(`weekly-digest:${userId}`).digest('base64url')
+}
+
+export function buildWeeklyDigestUnsubscribeUrl(siteUrl: string, userId: string, secret: string): string {
+  const token = weeklyDigestToken(secret, userId)
+  return `${siteUrl}/unsubscribe/weekly?u=${encodeURIComponent(userId)}&t=${encodeURIComponent(token)}`
+}
+
+export function verifyWeeklyDigestUnsubscribeToken(userId: string, token: string, secret: string): boolean {
+  const expected = Buffer.from(weeklyDigestToken(secret, userId))
+  const actual = Buffer.from(token)
+  if (expected.length !== actual.length) return false
+  return timingSafeEqual(expected, actual)
 }

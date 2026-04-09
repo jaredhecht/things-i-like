@@ -79,6 +79,7 @@ type Profile = {
   avatar_url: string | null
   bio: string | null
   elsewhere_visible?: boolean | null
+  weekly_digest_enabled?: boolean | null
 }
 
 export default function SettingsPage() {
@@ -91,6 +92,7 @@ export default function SettingsPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
   const [bioSaving, setBioSaving] = useState(false)
+  const [weeklyDigestSaving, setWeeklyDigestSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async (userId: string | null) => {
@@ -105,7 +107,22 @@ export default function SettingsPage() {
       .select('id, username, display_name, avatar_url, bio, elsewhere_visible')
       .eq('id', userId)
       .maybeSingle()
-    setProfile(data as Profile | null)
+    const nextProfile = data as Profile | null
+    if (nextProfile) {
+      const prefRes = await supabase
+        .from('profiles')
+        .select('weekly_digest_enabled')
+        .eq('id', userId)
+        .maybeSingle()
+      if (!prefRes.error) {
+        nextProfile.weekly_digest_enabled =
+          (prefRes.data as { weekly_digest_enabled?: boolean | null } | null)?.weekly_digest_enabled ?? true
+      } else {
+        console.warn('weekly_digest_enabled unavailable:', prefRes.error.message)
+        nextProfile.weekly_digest_enabled = null
+      }
+    }
+    setProfile(nextProfile)
     setLoading(false)
   }, [])
 
@@ -115,8 +132,8 @@ export default function SettingsPage() {
   }, [authResolved, load, user?.id])
 
   useEffect(() => {
-    if (profile) setBioDraft(profile.bio ?? '')
-  }, [profile?.id, profile?.bio])
+    setBioDraft(profile?.bio ?? '')
+  }, [profile])
 
   async function saveBio() {
     if (!user?.id) return
@@ -130,6 +147,19 @@ export default function SettingsPage() {
     }
     await load(user.id)
     setBioSaving(false)
+  }
+
+  async function saveWeeklyDigestEnabled(nextValue: boolean) {
+    if (!user?.id) return
+    setWeeklyDigestSaving(true)
+    const { error } = await supabase.from('profiles').update({ weekly_digest_enabled: nextValue }).eq('id', user.id)
+    if (error) {
+      alert(`Could not update weekly email preference: ${error.message}`)
+      setWeeklyDigestSaving(false)
+      return
+    }
+    setProfile((prev) => (prev ? { ...prev, weekly_digest_enabled: nextValue } : prev))
+    setWeeklyDigestSaving(false)
   }
 
   async function uploadAvatar(file: File) {
@@ -393,6 +423,36 @@ export default function SettingsPage() {
             onRefreshProfile={() => load(user.id)}
           />
         ) : null}
+
+        <section className="mb-10 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-zinc-900">Weekly email</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Get a weekly recap of new followers, likes, and activity from people you follow.
+          </p>
+          {profile?.weekly_digest_enabled === null ? (
+            <p className="mt-4 text-sm text-zinc-500">
+              Weekly email preferences are not set up yet. Run `supabase/weekly-digest-email.sql` in Supabase to
+              enable this setting.
+            </p>
+          ) : (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-zinc-200 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-900">Happening Things weekly update</p>
+                <p className="text-sm text-zinc-500">
+                  {profile?.weekly_digest_enabled ? 'You will receive the weekly email.' : 'You are unsubscribed from the weekly email.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={weeklyDigestSaving}
+                onClick={() => void saveWeeklyDigestEnabled(!(profile?.weekly_digest_enabled === true))}
+                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {weeklyDigestSaving ? 'Saving…' : profile?.weekly_digest_enabled ? 'Turn off' : 'Turn on'}
+              </button>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-lg border border-red-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-red-900">Danger zone</h2>

@@ -1,56 +1,45 @@
 # Happening Things — weekly email (spec)
 
-**Loops product:** **Loop** triggered by an **event** (not transactional email — avoids misusing transactional for promotional/lifecycle content per Loops policy).
+**Delivery:** server-rendered HTML email sent directly via **Resend** from `GET /api/cron/happening-things-weekly`.
 
-**Backend:** `GET /api/cron/happening-things-weekly` calls `POST https://app.loops.so/api/v1/events/send` with `eventName` (default `happening_things_weekly`) and `eventProperties` (scalar fields only; Loops limits value length ~500 chars — we clamp strings).
+**Why:** Loops was okay for simple event emails, but not a good fit for the conditional, personalized digest behavior this email needs.
 
 ## Schedule
 
-- **One weekly job:** Wednesday **6:00pm America/New_York (ET)** (cron is `0 22 * * 3` UTC — see `vercel.json`).
+- **One weekly job:** Wednesday **6:00pm America/New_York (ET)** (cron is `0 22 * * 3` UTC — see [vercel.json](/Users/jaredhecht/Projects/things-i-like/vercel.json)).
 - No per-recipient local time.
 
-## Section 5 cohort
+## Current sections
 
-Users whose **first-ever post** falls in the job’s **7-day window**. Implemented in SQL + `buildHappeningThingsDataVariables`; up to **15** people included in event properties, plus `first_posters_overflow` if more.
+Each section is rendered **only if it has data**:
 
-## Loops setup checklist
+- **New followers:** up to **5** avatars/usernames, plus overflow text if there are more.
+- **New likes:** count only.
+- **From people you follow:** count + CTA.
+- **All The Things:** network-wide post count + CTA.
 
-We cannot configure your Loops account from here (no access to your login). You can **auto-register the event + properties** by running once from the repo (uses `test@example.com` — no real delivery):
+The old **New People** section is intentionally removed for now.
 
-```bash
-npm run loops:happening-bootstrap
-```
+## Preferences / unsubscribe
 
-(`LOOPS_API_KEY` in `.env.local`; optional `LOOPS_HAPPENING_THINGS_EVENT_NAME` if not using the default.)
-
-Then in the Loops UI only:
-
-1. **Loop:** new Loop → trigger **Event received** → event **`happening_things_weekly`** (same name as env default).
-2. **Email step:** import `email/happening-things-weekly/happening-things-loops.zip` (or `npm run email:zip-happening-loops` then upload). Fix any merge tags with the event-property picker if needed.
-3. **Publish** the Loop.
-
-### Event property names (reference — included in bootstrap payload)
-
-Full list for manual entry in Loops (name + type, tab-separated): **`loops-event-properties.txt`** in this folder. Each **name** must match exactly — no backticks, no commas, one property per row in the Loops UI.
-
-**Numbers:** `newFollowersCount`, `newFollowersOverflow`, `newLikesCount`, `followingPostsCount`, `networkPostsCount`, `newMembersCount`, `first_posters_overflow`
-
-**Strings:** `notificationsUrl`, `followingUrl`, `everythingUrl`
-
-**Per follower row (1–5):** `follower_N_username`, `follower_N_avatar_url`, `follower_N_profile_url` (empty string when unused)
-
-**First-poster rows (1–15):** `firstposter_N_username`, `firstposter_N_avatar_url`, `firstposter_N_profile_url`
-
-## Deep links (TIL)
-
-Home reads `/?feed=following` and `/?feed=everything` on load.
+- Preference column: [supabase/weekly-digest-email.sql](/Users/jaredhecht/Projects/things-i-like/supabase/weekly-digest-email.sql)
+- Users can toggle the weekly email in [app/settings/page.tsx](/Users/jaredhecht/Projects/things-i-like/app/settings/page.tsx)
+- Email unsubscribe route: [app/unsubscribe/weekly/route.ts](/Users/jaredhecht/Projects/things-i-like/app/unsubscribe/weekly/route.ts)
 
 ## Cron
 
-- **Route:** `GET /api/cron/happening-things-weekly` — `Authorization: Bearer <CRON_SECRET>`.
-- **Dry run:** `?dryRun=1`.
-- **SQL:** `supabase/happening-things-weekly-rpc.sql`
+- **Route:** `GET /api/cron/happening-things-weekly`
+- **Auth:** `Authorization: Bearer <CRON_SECRET>`
+- **Dry run:** `?dryRun=1`
+- **Target one user:** `?userId=<uuid>`
+- **Override destination for a test:** `?userId=<uuid>&email=<address>&force=1`
 
 ## Env
 
-See `.env.example`: `LOOPS_HAPPENING_THINGS_EVENT_NAME` (optional), `HAPPENING_THINGS_DISABLED`, `HAPPENING_THINGS_MAX_RECIPIENTS`.
+See [.env.example](/Users/jaredhecht/Projects/things-i-like/.env.example):
+
+- `RESEND_API_KEY`
+- `WEEKLY_DIGEST_FROM` or `ADMIN_DIGEST_FROM`
+- `WEEKLY_DIGEST_UNSUBSCRIBE_SECRET` or `CRON_SECRET`
+- `HAPPENING_THINGS_DISABLED`
+- `HAPPENING_THINGS_MAX_RECIPIENTS`

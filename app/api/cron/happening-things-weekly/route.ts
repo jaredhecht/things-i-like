@@ -1,16 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
+import { Resend } from 'resend'
 import {
   buildHappeningThingsDataVariables,
-  fetchFirstPostAuthorsInWindow,
+  buildWeeklyDigestUnsubscribeUrl,
   fetchNetworkPostsCount,
   getHappeningThingsWindow,
-  happeningThingsIdempotencyKey,
+  happeningThingsSubjectLine,
   normalizeSiteUrl,
+  renderHappeningThingsEmailHtml,
+  renderHappeningThingsEmailText,
   shouldSkipHappeningThingsSend,
-  toHappeningThingsEventProperties,
 } from '@/src/lib/happening-things-weekly'
-import { loopsSendEvent } from '@/src/lib/loops'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -24,57 +25,43 @@ function authorize(request: NextRequest): boolean {
 }
 
 type AuthUserRow = { id: string; email?: string }
+type ProfilePrefRow = { id: string; weekly_digest_enabled?: boolean | null }
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-const DEFAULT_EVENT_NAME = 'happening_things_weekly'
-
-/**
- * Weekly Happening Things email via Loops **event** → **Loop** (not transactional API).
- *
- * Auth: Authorization: Bearer <CRON_SECRET>
- *
- * Query:
- * - dryRun=1 — compute payloads, do not call Loops.
- *
- * Env:
- * - LOOPS_API_KEY
- * - LOOPS_HAPPENING_THINGS_EVENT_NAME — optional; default `happening_things_weekly` (must match Loops event + Loop trigger).
- * - NEXT_PUBLIC_SITE_URL
- * - HAPPENING_THINGS_DISABLED=1, HAPPENING_THINGS_MAX_RECIPIENTS (optional)
- *
- * Loops setup:
- * 1. Register event properties (see `email/happening-things-weekly/index.mjml` header comment).
- * 2. Create a Loop whose trigger is “Event received” for that event name.
- * 3. Paste/import the MJML email into that Loop’s message step.
- *
- * Supabase: `supabase/happening-things-weekly-rpc.sql`
- */
 export async function GET(request: NextRequest) {
   if (!authorize(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const dryRun = request.nextUrl.searchParams.get('dryRun') === '1'
+  const forcedUserId = request.nextUrl.searchParams.get('userId')?.trim() || null
+  const forcedEmail = request.nextUrl.searchParams.get('email')?.trim() || null
+  const forceSend = request.nextUrl.searchParams.get('force') === '1'
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceRoleKey) {
     return NextResponse.json({ error: 'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
   }
 
-  const loopsKey = process.env.LOOPS_API_KEY?.trim()
-  const eventName = process.env.LOOPS_HAPPENING_THINGS_EVENT_NAME?.trim() || DEFAULT_EVENT_NAME
+  const resendKey = process.env.RESEND_API_KEY?.trim()
+  const from = process.env.WEEKLY_DIGEST_FROM?.trim() || process.env.ADMIN_DIGEST_FROM?.trim()
+  const unsubscribeSecret = process.env.WEEKLY_DIGEST_UNSUBSCRIBE_SECRET?.trim() || process.env.CRON_SECRET?.trim()
   const disabled = process.env.HAPPENING_THINGS_DISABLED === '1' || process.env.HAPPENING_THINGS_DISABLED === 'true'
+  const maxRaw = process.env.HAPPENING_THINGS_MAX_RECIPIENTS?.trim()
 
   if (!dryRun && !disabled) {
-    if (!loopsKey) {
-      return NextResponse.json({ error: 'Missing LOOPS_API_KEY' }, { status: 500 })
+    if (!resendKey || !from) {
+      return NextResponse.json({ error: 'Missing RESEND_API_KEY or WEEKLY_DIGEST_FROM (or ADMIN_DIGEST_FROM)' }, { status: 500 })
+    }
+    if (!unsubscribeSecret) {
+      return NextResponse.json({ error: 'Missing WEEKLY_DIGEST_UNSUBSCRIBE_SECRET or CRON_SECRET' }, { status: 500 })
     }
   }
 
-  const maxRaw = process.env.HAPPENING_THINGS_MAX_RECIPIENTS?.trim()
   let maxRecipients: number | null = null
   if (maxRaw) {
     const n = Number.parseInt(maxRaw, 10)
@@ -92,23 +79,24 @@ export async function GET(request: NextRequest) {
   })
 
   let networkPostsCount = 0
-  let newMembers: Awaited<ReturnType<typeof fetchFirstPostAuthorsInWindow>> = []
   try {
-    ;[networkPostsCount, newMembers] = await Promise.all([
-      fetchNetworkPostsCount(admin, startIso, endIso),
-      fetchFirstPostAuthorsInWindow(admin, siteUrl, startIso, endIso),
-    ])
+    networkPostsCount = await fetchNetworkPostsCount(admin, startIso, endIso)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 
+  const resend = resendKey ? new Resend(resendKey) : null
+
   let sent = 0
   let skippedEmpty = 0
   let skippedNoEmail = 0
+  let skippedDisabled = 0
   let failed = 0
   const errors: { userId: string; message: string }[] = []
-  let sampleEventProperties: Record<string, string | number> | null = null
+  let sampleHtml: string | null = null
+  let sampleText: string | null = null
+  let sampleRecipient: string | null = null
 
   let page = 1
   const perPage = 1000
@@ -121,8 +109,30 @@ export async function GET(request: NextRequest) {
     const batch = (data.users || []) as AuthUserRow[]
     if (batch.length === 0) break
 
+    const profileIds = forcedUserId ? [forcedUserId] : batch.map((u) => u.id)
+    const { data: prefRows, error: prefError } = await admin
+      .from('profiles')
+      .select('id, weekly_digest_enabled')
+      .in('id', profileIds)
+    if (prefError) {
+      const extra = /weekly_digest_enabled/i.test(prefError.message)
+        ? ' (run supabase/weekly-digest-email.sql to add the weekly digest preference column)'
+        : ''
+      return NextResponse.json({ error: `${prefError.message}${extra}` }, { status: 500 })
+    }
+    const prefById = new Map((prefRows || []).map((row) => [row.id as string, row as ProfilePrefRow]))
+
     for (const u of batch) {
-      const email = u.email?.trim()
+      if (forcedUserId && u.id !== forcedUserId) continue
+
+      const pref = prefById.get(u.id)
+      const weeklyEnabled = pref?.weekly_digest_enabled !== false
+      if (!forceSend && !weeklyEnabled) {
+        skippedDisabled += 1
+        continue
+      }
+
+      const email = forcedEmail || u.email?.trim()
       if (!email) {
         skippedNoEmail += 1
         continue
@@ -137,7 +147,6 @@ export async function GET(request: NextRequest) {
           startIso,
           endIso,
           networkPostsCount,
-          newMembers,
         })
       } catch (e) {
         failed += 1
@@ -150,47 +159,40 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const eventProperties = toHappeningThingsEventProperties(vars)
-      if (sampleEventProperties === null) {
-        sampleEventProperties = eventProperties
-      }
+      const unsubscribeUrl = buildWeeklyDigestUnsubscribeUrl(siteUrl, u.id, unsubscribeSecret || '')
+      const html = renderHappeningThingsEmailHtml(vars, { unsubscribeUrl })
+      const text = renderHappeningThingsEmailText(vars, { unsubscribeUrl })
 
-      if (dryRun) {
+      if (sampleHtml === null) sampleHtml = html
+      if (sampleText === null) sampleText = text
+      if (sampleRecipient === null) sampleRecipient = email
+
+      if (dryRun || disabled) {
         sent += 1
-        if (maxRecipients !== null && sent >= maxRecipients) break outer
-        continue
-      }
-
-      if (disabled) {
-        continue
-      }
-
-      if (maxRecipients !== null && sent >= maxRecipients) {
-        break outer
-      }
-
-      const result = await loopsSendEvent(
-        loopsKey!,
-        {
-          email,
-          userId: u.id,
-          eventName,
-          eventProperties,
-        },
-        { idempotencyKey: happeningThingsIdempotencyKey(windowEnd, u.id) },
-      )
-
-      if (!result.ok) {
-        failed += 1
-        errors.push({ userId: u.id, message: result.message })
       } else {
-        sent += 1
+        const { error: sendErr } = await resend!.emails.send({
+          from: from!,
+          to: [email],
+          subject: happeningThingsSubjectLine(vars),
+          html,
+          text,
+        })
+
+        if (sendErr) {
+          failed += 1
+          errors.push({ userId: u.id, message: sendErr.message })
+        } else {
+          sent += 1
+        }
+
+        await sleep(120)
       }
 
-      await sleep(120)
+      if (maxRecipients !== null && sent >= maxRecipients) break outer
+      if (forcedUserId) break outer
     }
 
-    if (batch.length < perPage) break
+    if (batch.length < perPage || forcedUserId) break
     page += 1
   }
 
@@ -198,19 +200,21 @@ export async function GET(request: NextRequest) {
     ok: true,
     dryRun,
     disabled: disabled && !dryRun,
-    eventName,
     window: { start: startIso, end: endIso },
     siteUrl,
-    network: { networkPostsCount, newMembersCount: newMembers.length },
+    network: { networkPostsCount },
     sent,
     skippedEmpty,
     skippedNoEmail,
+    skippedDisabled,
     failed,
     errors: errors.slice(0, 40),
     errorCount: errors.length,
-    sampleEventProperties,
+    sampleRecipient,
+    sampleHtml: dryRun ? sampleHtml : undefined,
+    sampleText: dryRun ? sampleText : undefined,
     hint: dryRun
-      ? 'Remove ?dryRun=1 to call Loops. Ensure the event + properties exist and a Loop is subscribed to this eventName.'
+      ? 'Remove ?dryRun=1 to send. Optional: add ?userId=<uuid>&email=<address>&force=1 for a targeted test.'
       : undefined,
   })
 }

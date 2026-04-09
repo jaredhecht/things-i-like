@@ -111,8 +111,6 @@ const PROFILE_IN_CHUNK = 100
 /** Signed-in dashboard: page size for following + everything feeds (infinite scroll loads more). */
 const FEED_PAGE_SIZE = 20
 const HOME_FEED_SCOPE_KEY = 'til-home-feed-scope'
-/** Per-user localStorage: user finished/skimmed the “pick people” onboarding without forcing hide on first follow. */
-const homeOnboardingPickDoneKey = (userId: string) => `til_onboarding_pick_done:${userId}`
 type HomeFeedScope = 'following' | 'everything'
 type FeedFetchOptions = { offset?: number; append?: boolean }
 
@@ -197,6 +195,14 @@ export default function Home() {
   const postsRef = useRef<Post[]>([])
   postsRef.current = posts
   const feedSentinelRef = useRef<HTMLDivElement | null>(null)
+  const feedTabsRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToFeedTabs = useCallback(() => {
+    if (typeof window === 'undefined') return
+    requestAnimationFrame(() => {
+      feedTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
 
   function clearImageComposerState() {
     setImageLocalPreview((prev) => {
@@ -595,21 +601,12 @@ export default function Home() {
       return
     }
     const rows = data || []
+    const followingIds = rows
+      .map((f) => f.following_id as string)
+      .filter((id): id is string => Boolean(id))
+    bootstrapFollowingIdsRef.current = followingIds
     setFollowingOtherCount(rows.length)
-    setFollowingUserIds(
-      new Set(rows.map((f) => f.following_id as string).filter((id): id is string => Boolean(id))),
-    )
-  }, [user?.id])
-
-  const dismissPickPeopleOnboarding = useCallback(() => {
-    const uid = user?.id
-    if (!uid) return
-    try {
-      localStorage.setItem(homeOnboardingPickDoneKey(uid), '1')
-    } catch {
-      /* ignore */
-    }
-    setPickPeopleVisible(false)
+    setFollowingUserIds(new Set(followingIds))
   }, [user?.id])
 
   const switchFeedToFollowing = useCallback(() => {
@@ -619,8 +616,8 @@ export default function Home() {
     } catch {
       /* ignore */
     }
-    dismissPickPeopleOnboarding()
-  }, [dismissPickPeopleOnboarding])
+    setPickPeopleVisible(followingOtherCount === 0)
+  }, [followingOtherCount])
 
   const switchFeedToEverything = useCallback(() => {
     setFeedScope('everything')
@@ -629,8 +626,18 @@ export default function Home() {
     } catch {
       /* ignore */
     }
-    dismissPickPeopleOnboarding()
-  }, [dismissPickPeopleOnboarding])
+    setPickPeopleVisible(false)
+  }, [])
+
+  const handleRecommendationsContinue = useCallback(() => {
+    if ((followingOtherCount ?? 0) > 0) {
+      switchFeedToFollowing()
+      scrollToFeedTabs()
+      return
+    }
+    switchFeedToEverything()
+    scrollToFeedTabs()
+  }, [followingOtherCount, scrollToFeedTabs, switchFeedToEverything, switchFeedToFollowing])
 
   async function fetchFeed() {
     const u = userRef.current
@@ -1336,16 +1343,7 @@ export default function Home() {
   }, [user?.id])
 
   useLayoutEffect(() => {
-    const uid = user?.id
-    if (!uid || !feedBootstrapped || followingOtherCount === null) return
-    try {
-      if (localStorage.getItem(homeOnboardingPickDoneKey(uid)) === '1') {
-        setPickPeopleVisible(false)
-        return
-      }
-    } catch {
-      /* ignore */
-    }
+    if (!user?.id || !feedBootstrapped || followingOtherCount === null) return
     if (followingOtherCount === 0) {
       setPickPeopleVisible(true)
     }
@@ -2259,7 +2257,7 @@ export default function Home() {
             ) : null}
           </section>
           {user && profile && !needsUsername ? (
-            <div className="mb-8 flex justify-center" role="tablist" aria-label="Home feed">
+            <div ref={feedTabsRef} className="mb-8 flex justify-center" role="tablist" aria-label="Home feed">
               <div className="flex w-full max-w-sm rounded-[4px] border border-[#dbdbdb] bg-white p-0.5 sm:max-w-md">
                 <button
                   type="button"
@@ -2293,39 +2291,20 @@ export default function Home() {
           {showPeopleDirectory ? (
             <div className="mb-10">
               <h2 className="mb-2 text-lg font-semibold text-zinc-900">People Who Like Things</h2>
-              <p className="mb-1 max-w-xl text-sm leading-relaxed text-zinc-600">
-                Follow as many people as you like. Use{' '}
-                <button
-                  type="button"
-                  onClick={switchFeedToFollowing}
-                  className="font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500"
-                >
-                  Following
-                </button>{' '}
-                to see their posts and{' '}
-                <button
-                  type="button"
-                  onClick={switchFeedToEverything}
-                  className="font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500"
-                >
-                  EveryThing
-                </button>{' '}
-                to see all the things.
-              </p>
+              <p className="mb-1 max-w-xl text-sm leading-relaxed text-zinc-600">Follow some people to see the things they like.</p>
               <PeopleWhoLikeThingsDirectory
                 currentUserId={user.id}
                 refreshKey={directoryRefreshKey}
                 onFollowChanged={() => void refetchFollowingCount()}
                 onboardingOnly
               />
-              <div className="mt-6 flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-zinc-600">Ready to see your feed?</p>
+              <div className="mt-6 text-center">
                 <button
                   type="button"
-                  onClick={dismissPickPeopleOnboarding}
-                  className="shrink-0 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
+                  onClick={handleRecommendationsContinue}
+                  className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
                 >
-                  Continue to my feed
+                  See Things People Like
                 </button>
               </div>
             </div>
@@ -2427,6 +2406,26 @@ export default function Home() {
               ) : (
                 <span className="sr-only">More posts load as you scroll</span>
               )}
+            </div>
+          ) : null}
+          {user &&
+          !showPeopleDirectory &&
+          !feedHasMore &&
+          !feedLoadingInitial &&
+          feedScope === 'following' &&
+          (followingOtherCount ?? 0) > 0 &&
+          posts.length > 0 ? (
+            <div className="pt-2">
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-5 py-6 text-center">
+                <p className="text-sm text-zinc-600">Want to keep browsing beyond the people you follow?</p>
+                <button
+                  type="button"
+                  onClick={switchFeedToEverything}
+                  className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800"
+                >
+                  See things people like
+                </button>
+              </div>
             </div>
           ) : null}
         </section>

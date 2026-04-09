@@ -13,6 +13,8 @@ export type DirectoryProfileRow = {
   post_count: number
 }
 
+const ONBOARDING_RECOMMENDATION_LIMIT = 15
+
 export function PeopleWhoLikeThingsDirectory({
   currentUserId,
   refreshKey,
@@ -32,7 +34,7 @@ export function PeopleWhoLikeThingsDirectory({
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data, error: rpcErr } = await supabase.rpc('profiles_directory_by_activity')
+    const { data, error: rpcErr } = await supabase.rpc('profiles_directory_by_total_likes')
     if (rpcErr) {
       setError(rpcErr.message)
       setRows([])
@@ -54,12 +56,22 @@ export function PeopleWhoLikeThingsDirectory({
         }
       })
       .filter((r) => r.id && r.id !== currentUserId)
-    setRows(onboardingOnly ? parsed.filter((r) => r.post_count >= 1) : parsed)
+    setRows(
+      onboardingOnly
+        ? parsed.filter((r) => r.post_count >= 1).slice(0, ONBOARDING_RECOMMENDATION_LIMIT)
+        : parsed,
+    )
     setLoading(false)
   }, [currentUserId, onboardingOnly])
 
   useEffect(() => {
-    void load()
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) void load()
+    })
+    return () => {
+      cancelled = true
+    }
   }, [load, refreshKey])
 
   if (loading) {
@@ -83,7 +95,7 @@ export function PeopleWhoLikeThingsDirectory({
     return (
       <p className="py-6 text-sm text-red-600">
         Couldn&apos;t load people list. Run{' '}
-        <code className="rounded bg-zinc-100 px-1 text-xs">supabase/profiles-directory-by-activity-rpc.sql</code> in Supabase,
+        <code className="rounded bg-zinc-100 px-1 text-xs">supabase/profiles-directory-by-total-likes-rpc.sql</code> in Supabase,
         then refresh.
       </p>
     )

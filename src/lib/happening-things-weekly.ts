@@ -2,9 +2,10 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const FOLLOWER_ROWS_IN_EMAIL = 5
+const NEW_MEMBER_ROWS_IN_EMAIL = 15
 const POST_IDS_CHUNK = 500
 
-export type HappeningThingsFollower = {
+export type HappeningThingsPerson = {
   username: string
   avatarUrl: string
   profileUrl: string
@@ -12,7 +13,7 @@ export type HappeningThingsFollower = {
 
 export type HappeningThingsDataVariables = {
   newFollowersCount: number
-  newFollowers: HappeningThingsFollower[]
+  newFollowers: HappeningThingsPerson[]
   newFollowersOverflow: number
   notificationsUrl: string
   newLikesCount: number
@@ -20,6 +21,9 @@ export type HappeningThingsDataVariables = {
   followingUrl: string
   networkPostsCount: number
   everythingUrl: string
+  newMembersCount: number
+  newMembers: HappeningThingsPerson[]
+  newMembersOverflow: number
 }
 
 export function getHappeningThingsWindow(end: Date): { start: Date; end: Date } {
@@ -55,7 +59,7 @@ async function profilesByIds(admin: SupabaseClient, ids: string[]): Promise<Map<
   return map
 }
 
-function followerCard(siteUrl: string, p: ProfileRow): HappeningThingsFollower | null {
+function personCard(siteUrl: string, p: ProfileRow): HappeningThingsPerson | null {
   const u = p.username?.trim()
   if (!u) return null
   return {
@@ -77,6 +81,64 @@ export async function fetchNetworkPostsCount(
     .lt('created_at', endIso)
   if (error) throw new Error(error.message)
   return count ?? 0
+}
+
+export async function fetchRecentSignupPosters(
+  admin: SupabaseClient,
+  siteUrl: string,
+  startIso: string,
+  endIso: string,
+): Promise<HappeningThingsPerson[]> {
+  const recentSignups: Array<{ id: string; createdAt: string }> = []
+  let page = 1
+  const perPage = 1000
+
+  for (;;) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
+    if (error) throw new Error(error.message)
+    const batch = data.users || []
+    if (batch.length === 0) break
+
+    for (const user of batch) {
+      const createdAt = user.created_at
+      if (!createdAt) continue
+      if (createdAt >= startIso && createdAt < endIso) {
+        recentSignups.push({ id: user.id, createdAt })
+      }
+    }
+
+    if (batch.length < perPage) break
+    page += 1
+  }
+
+  if (recentSignups.length === 0) return []
+
+  recentSignups.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const signupIds = recentSignups.map((user) => user.id)
+  const posters = new Set<string>()
+  const chunk = 200
+
+  for (let i = 0; i < signupIds.length; i += chunk) {
+    const slice = signupIds.slice(i, i + chunk)
+    const { data, error } = await admin.from('posts').select('user_id').in('user_id', slice)
+    if (error) throw new Error(error.message)
+    for (const row of data || []) {
+      if (row.user_id) posters.add(row.user_id as string)
+    }
+  }
+
+  const eligibleIds = recentSignups.map((user) => user.id).filter((id) => posters.has(id))
+  const profileMap = await profilesByIds(admin, eligibleIds)
+  const people: HappeningThingsPerson[] = []
+
+  for (const id of eligibleIds) {
+    const profile = profileMap.get(id)
+    if (!profile) continue
+    const card = personCard(siteUrl, profile)
+    if (card) people.push(card)
+  }
+
+  return people
 }
 
 async function countLikesOnUserPostsInWindow(
@@ -134,8 +196,9 @@ export async function buildHappeningThingsDataVariables(args: {
   startIso: string
   endIso: string
   networkPostsCount: number
+  newMembers: HappeningThingsPerson[]
 }): Promise<HappeningThingsDataVariables> {
-  const { admin, siteUrl, recipientUserId, startIso, endIso, networkPostsCount } = args
+  const { admin, siteUrl, recipientUserId, startIso, endIso, networkPostsCount, newMembers } = args
 
   const notificationsUrl = `${siteUrl}/notifications`
   const followingUrl = `${siteUrl}/?feed=following`
@@ -154,11 +217,11 @@ export async function buildHappeningThingsDataVariables(args: {
   const totalNewFollowers = followerIdsOrdered.length
   const sliceIds = followerIdsOrdered.slice(0, FOLLOWER_ROWS_IN_EMAIL)
   const profs = await profilesByIds(admin, sliceIds)
-  const newFollowers: HappeningThingsFollower[] = []
+  const newFollowers: HappeningThingsPerson[] = []
   for (const fid of sliceIds) {
     const p = profs.get(fid)
     if (!p) continue
-    const card = followerCard(siteUrl, p)
+    const card = personCard(siteUrl, p)
     if (card) newFollowers.push(card)
   }
 
@@ -177,6 +240,9 @@ export async function buildHappeningThingsDataVariables(args: {
     followingUrl,
     networkPostsCount,
     everythingUrl,
+    newMembersCount: newMembers.length,
+    newMembers: newMembers.slice(0, NEW_MEMBER_ROWS_IN_EMAIL),
+    newMembersOverflow: Math.max(0, newMembers.length - NEW_MEMBER_ROWS_IN_EMAIL),
   }
 }
 
@@ -185,7 +251,8 @@ export function shouldSkipHappeningThingsSend(vars: HappeningThingsDataVariables
     vars.newFollowersCount === 0 &&
     vars.newLikesCount === 0 &&
     vars.followingPostsCount === 0 &&
-    vars.networkPostsCount === 0
+    vars.networkPostsCount === 0 &&
+    vars.newMembersCount === 0
   )
 }
 
@@ -206,6 +273,7 @@ export function happeningThingsSubjectLine(vars: HappeningThingsDataVariables): 
   if (vars.newFollowersCount > 0) parts.push(`${vars.newFollowersCount} ${pluralize(vars.newFollowersCount, 'follower')}`)
   if (vars.newLikesCount > 0) parts.push(`${vars.newLikesCount} ${pluralize(vars.newLikesCount, 'like')}`)
   if (vars.followingPostsCount > 0) parts.push(`${vars.followingPostsCount} ${pluralize(vars.followingPostsCount, 'new thing')}`)
+  if (vars.newMembersCount > 0) parts.push(`${vars.newMembersCount} ${vars.newMembersCount === 1 ? 'new person' : 'new people'}`)
   if (parts.length === 0) return 'Things are Happening'
   return `Things are Happening · ${parts.join(', ')}`
 }
@@ -314,6 +382,48 @@ export function renderHappeningThingsEmailHtml(
       </tr>`)
   }
 
+  if (vars.newMembersCount > 0) {
+    const newMemberRows = vars.newMembers
+      .map(
+        (row) => `
+          <tr>
+            <td style="width:44px;vertical-align:middle;padding:0 0 12px;">
+              <a href="${escapeHtml(row.profileUrl)}" style="text-decoration:none;">
+                <img src="${escapeHtml(row.avatarUrl)}" width="32" height="32" alt="" style="display:block;border-radius:50%;border:1px solid #e4e4e7;width:32px;height:32px;object-fit:cover;" />
+              </a>
+            </td>
+            <td style="vertical-align:middle;padding:0 0 12px 12px;text-align:left;">
+              <a href="${escapeHtml(row.profileUrl)}" style="color:#18181b;text-decoration:none;font-size:14px;font-weight:500;">@${escapeHtml(row.username)}</a>
+            </td>
+          </tr>`,
+      )
+      .join('')
+
+    sections.push(`
+      <tr>
+        <td style="padding:8px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;">
+            <tr>
+              <td style="padding:24px;">
+                <div style="color:#71717a;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding-bottom:6px;">New People</div>
+                <div style="color:#18181b;font-size:18px;font-weight:600;line-height:1.35;padding-bottom:16px;">
+                  ${vars.newMembersCount} ${vars.newMembersCount === 1 ? 'new person signed up and shared their first thing' : 'new people signed up and shared their first thing'}
+                </div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  ${newMemberRows}
+                </table>
+                ${
+                  vars.newMembersOverflow > 0
+                    ? `<div style="color:#71717a;font-size:13px;padding-top:4px;">and ${vars.newMembersOverflow} more</div>`
+                    : ''
+                }
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`)
+  }
+
   return `<!DOCTYPE html>
 <html>
   <body style="margin:0;background:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#18181b;">
@@ -387,6 +497,16 @@ export function renderHappeningThingsEmailText(
       `See All The Things: ${vars.everythingUrl}`,
       '',
     )
+  }
+
+  if (vars.newMembersCount > 0) {
+    lines.push(
+      'NEW PEOPLE',
+      `${vars.newMembersCount} ${vars.newMembersCount === 1 ? 'new person signed up and shared their first thing' : 'new people signed up and shared their first thing'}`,
+    )
+    for (const member of vars.newMembers) lines.push(`- @${member.username}`)
+    if (vars.newMembersOverflow > 0) lines.push(`- and ${vars.newMembersOverflow} more`)
+    lines.push('')
   }
 
   lines.push('Like things? Share them.', vars.everythingUrl.replace('/?feed=everything', '/'), '', `Unsubscribe: ${options.unsubscribeUrl}`)

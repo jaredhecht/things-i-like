@@ -5,6 +5,7 @@ import {
   buildHappeningThingsDataVariables,
   buildWeeklyDigestUnsubscribeUrl,
   fetchNetworkPostsCount,
+  fetchRecentSignupPosters,
   getHappeningThingsWindow,
   happeningThingsSubjectLine,
   normalizeSiteUrl,
@@ -79,8 +80,12 @@ export async function GET(request: NextRequest) {
   })
 
   let networkPostsCount = 0
+  let newMembers = []
   try {
-    networkPostsCount = await fetchNetworkPostsCount(admin, startIso, endIso)
+    ;[networkPostsCount, newMembers] = await Promise.all([
+      fetchNetworkPostsCount(admin, startIso, endIso),
+      fetchRecentSignupPosters(admin, siteUrl, startIso, endIso),
+    ])
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -147,6 +152,7 @@ export async function GET(request: NextRequest) {
           startIso,
           endIso,
           networkPostsCount,
+          newMembers,
         })
       } catch (e) {
         failed += 1
@@ -202,7 +208,7 @@ export async function GET(request: NextRequest) {
     disabled: disabled && !dryRun,
     window: { start: startIso, end: endIso },
     siteUrl,
-    network: { networkPostsCount },
+    network: { networkPostsCount, newMembersCount: newMembers.length },
     sent,
     skippedEmpty,
     skippedNoEmail,

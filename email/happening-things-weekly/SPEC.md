@@ -17,8 +17,7 @@ Each section is rendered **only if it has data**:
 - **New likes:** count only.
 - **From people you follow:** count + CTA.
 - **All The Things:** network-wide post count + CTA.
-
-The old **New People** section is intentionally removed for now.
+- **New People:** up to **15** people who signed up during the weekly window and have posted at least once.
 
 ## Preferences / unsubscribe
 

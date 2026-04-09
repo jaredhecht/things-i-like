@@ -372,6 +372,7 @@ export default function Home() {
           console.error('Error loading public preview posts:', error)
           setPosts([])
           setAuthorByUserId({})
+          setLikeCounts({})
           return
         }
         const batch = (rows || []) as Post[]
@@ -391,6 +392,7 @@ export default function Home() {
       if (ids.length === 0) {
         setPosts([])
         setAuthorByUserId({})
+        setLikeCounts({})
         return
       }
       const map: Record<string, AuthorMeta> = {}
@@ -415,8 +417,30 @@ export default function Home() {
         }
       }
       await mergeProfilesForRethingUsernames(supabase, picked, map)
+      const previewLikeCounts: Record<string, number> = {}
+      for (const post of picked) previewLikeCounts[post.id] = 0
+      if (picked.length > 0) {
+        const postIds = picked.map((post) => post.id)
+        const chunkSize = 120
+        for (let i = 0; i < postIds.length; i += chunkSize) {
+          const slice = postIds.slice(i, i + chunkSize)
+          const { data: countRows, error: countErr } = await supabase.rpc('post_like_counts', { post_ids: slice })
+          if (countErr) {
+            console.warn('[home] public preview post_like_counts RPC failed:', countErr.message)
+            break
+          }
+          for (const row of countRows || []) {
+            const r = row as Record<string, unknown>
+            const pid = typeof r.post_id === 'string' ? r.post_id : String(r.post_id ?? '')
+            const lc = r.like_count
+            const n = typeof lc === 'number' ? lc : typeof lc === 'string' ? parseInt(lc, 10) : Number(lc)
+            if (pid) previewLikeCounts[pid] = Number.isFinite(n) ? n : 0
+          }
+        }
+      }
       setPosts(picked)
       setAuthorByUserId(map)
+      setLikeCounts(previewLikeCounts)
     } finally {
       setPublicPreviewLoading(false)
     }
@@ -1530,9 +1554,15 @@ export default function Home() {
         ) : null}
 
         {authResolved && !user ? (
-          <div className="mb-10 rounded-md border border-zinc-200 bg-white p-6 text-center">
-            <p className="mb-3 text-zinc-500">Sign in to start sharing things you like.</p>
-            <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">Sign in with Google</button>
+          <div className="mb-10">
+            <div className="mb-5 text-center">
+              <p className="text-xl font-light tracking-tight text-zinc-900 sm:text-2xl">No algorithms.</p>
+              <p className="mt-1 text-xl font-light tracking-tight text-zinc-900 sm:text-2xl">Just things people like.</p>
+            </div>
+            <div className="rounded-md border border-zinc-200 bg-white p-6 text-center">
+              <p className="mb-3 text-zinc-500">Sign in to start sharing things you like.</p>
+              <button onClick={signInWithGoogle} className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50">Sign in with Google</button>
+            </div>
           </div>
         ) : null}
 
@@ -2347,6 +2377,7 @@ export default function Home() {
                 onAuthorFollowChange={() => void refetchFollowingCount()}
                 showAuthor={!!author?.username}
                 dashboardActions={!!user}
+                profileLikeBar={!user}
                 likeCount={likeCounts[post.id] ?? 0}
                 rethingCount={rethingCounts[post.id] ?? 0}
                 liked={likedPostIds.has(post.id)}

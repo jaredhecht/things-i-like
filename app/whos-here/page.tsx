@@ -73,7 +73,7 @@ export default async function WhosHerePage() {
           </Link>
         </p>
         <h1 className="mb-2 text-2xl font-light tracking-tight text-zinc-900">Who&apos;s Here?</h1>
-        <p className="mb-8 text-sm text-zinc-500">People who have posted at least once, ranked by total likes received.</p>
+        <p className="mb-8 text-sm text-zinc-500">People who have liked things</p>
 
         {error ? (
           <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">

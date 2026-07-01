@@ -13,6 +13,7 @@ import {
   renderHappeningThingsEmailText,
   shouldSkipHappeningThingsSend,
 } from '@/src/lib/happening-things-weekly'
+import { isResendDisabled } from '@/src/lib/resend-config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -51,7 +52,10 @@ export async function GET(request: NextRequest) {
   const resendKey = process.env.RESEND_API_KEY?.trim()
   const from = process.env.WEEKLY_DIGEST_FROM?.trim() || process.env.ADMIN_DIGEST_FROM?.trim()
   const unsubscribeSecret = process.env.WEEKLY_DIGEST_UNSUBSCRIBE_SECRET?.trim() || process.env.CRON_SECRET?.trim()
-  const disabled = process.env.HAPPENING_THINGS_DISABLED === '1' || process.env.HAPPENING_THINGS_DISABLED === 'true'
+  const disabled =
+    isResendDisabled() ||
+    process.env.HAPPENING_THINGS_DISABLED === '1' ||
+    process.env.HAPPENING_THINGS_DISABLED === 'true'
   const maxRaw = process.env.HAPPENING_THINGS_MAX_RECIPIENTS?.trim()
 
   if (!dryRun && !disabled) {

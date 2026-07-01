@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 import { Resend } from 'resend'
 import { getDigestWindow } from '@/src/lib/daily-digest-window'
+import { isResendDisabled } from '@/src/lib/resend-config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -26,11 +27,12 @@ export async function GET(request: NextRequest) {
   const resendKey = process.env.RESEND_API_KEY
   const to = process.env.ADMIN_DIGEST_EMAIL?.trim()
   const from = process.env.ADMIN_DIGEST_FROM?.trim()
+  const disabled = isResendDisabled()
 
   if (!url || !serviceRoleKey) {
     return NextResponse.json({ error: 'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
   }
-  if (!resendKey || !to || !from) {
+  if (!disabled && (!resendKey || !to || !from)) {
     return NextResponse.json(
       { error: 'Missing RESEND_API_KEY, ADMIN_DIGEST_EMAIL, or ADMIN_DIGEST_FROM' },
       { status: 500 },
@@ -131,8 +133,19 @@ ${rows}
     `New posts: ${postsTotal}`,
   ].join('\n')
 
-  const resend = new Resend(resendKey)
-  const { error: sendErr } = await resend.emails.send({
+  const resend = resendKey ? new Resend(resendKey) : null
+  if (disabled) {
+    return NextResponse.json({
+      ok: true,
+      disabled: true,
+      day: label,
+      timezone,
+      newAccounts: newUsers.length,
+      newPosts: postsTotal,
+    })
+  }
+
+  const { error: sendErr } = await resend!.emails.send({
     from,
     to: [to],
     subject: `Things I Like digest — ${label} · ${newUsers.length} signups, ${postsTotal} posts`,

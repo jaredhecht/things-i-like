@@ -145,6 +145,13 @@ ${rows}
     })
   }
 
+  if (!resendKey || !to || !from) {
+    return NextResponse.json(
+      { error: 'Missing RESEND_API_KEY, ADMIN_DIGEST_EMAIL, or ADMIN_DIGEST_FROM' },
+      { status: 500 },
+    )
+  }
+
   const { error: sendErr } = await resend!.emails.send({
     from,
     to: [to],
